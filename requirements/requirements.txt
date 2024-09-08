@@ -1,0 +1,8 @@
+pytorch
+torchaudio
+torchvision
+numpy
+pandas
+matplotlib
+pydantic
+nibabel

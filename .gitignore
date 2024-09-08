@@ -1,3 +1,8 @@
 *.nii
 *.mp4
 *.avi
+
+venv/
+__pycache__/
+
+.DS_Store

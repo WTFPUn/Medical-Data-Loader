@@ -15,13 +15,13 @@ ratio_without_test = Tuple[float, float]
 SplitRatio = Union[ratio_with_test, ratio_without_test]
 
 
-class InfoMetaData(TypedDict):
+class InfoMetaData(BaseModel):
     dataset_path: str
     split_ratio: Union[ratio_with_test, ratio_without_test]
     seed: int
 
 
-class DataMetaData(TypedDict):
+class DataMetaData(BaseModel):
     train: List[str]
     test: List[str]
     val: List[str]

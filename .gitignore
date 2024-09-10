@@ -4,6 +4,7 @@
 *.nii.gz
 *.log
 *.json
+*.npz
 
 venv/
 __pycache__/

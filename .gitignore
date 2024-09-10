@@ -1,6 +1,9 @@
 *.nii
 *.mp4
 *.avi
+*.nii.gz
+*.log
+*.json
 
 venv/
 __pycache__/

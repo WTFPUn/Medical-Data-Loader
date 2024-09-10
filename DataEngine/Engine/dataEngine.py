@@ -1,3 +1,5 @@
+import threading
+import os
 import json
 from typing import Literal
 
@@ -6,7 +8,8 @@ from .dataset import MedicalDataset
 from ..log import logger
 
 from torch.utils.data import DataLoader
-
+import SimpleITK as sitk
+import numpy as np
 
 
 
@@ -22,7 +25,39 @@ class DataEngine:
         self.dataset_path = self.meta_data.info.dataset_path
         self.dataset_config = dataset_config
         
+        self.transform_to_npz()
+        
         logger.info("DataEngine initialized with meta data from %s", meta_data_path)
+        
+    def __niigz_to_npz_thread(self, idx: str):
+        data = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/data/img{idx}.nii.gz"))
+        label = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/label/label{idx}.nii.gz"))
+        
+        np.savez_compressed(f"{self.dataset_path}/data_npz/img{idx}.npz", data)
+        np.savez_compressed(f"{self.dataset_path}/label_npz/label{idx}.npz", label)
+        
+        logger.info("Transformed %s to npz", idx)
+        return True
+ 
+    def transform_to_npz(self):
+        if os.path.exists(f"{self.dataset_path}/data_npz") and os.path.exists(f"{self.dataset_path}/label_npz"):
+            # I'm too lazy to check if all files are npz files :P
+            logger.info("Data already transformed to npz")
+            return
+        # create datanpz and labelnpz
+        os.makedirs(f"{self.dataset_path}/data_npz", exist_ok=True)
+        os.makedirs(f"{self.dataset_path}/label_npz", exist_ok=True)
+        
+        threads = []
+        for idx in self.meta_data.data.train + self.meta_data.data.test + self.meta_data.data.val:
+            thread = threading.Thread(target=self.__niigz_to_npz_thread, args=(idx,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        logger.info("Transformed all nii.gz files to npz files")
 
     def get_data(self, data_type: Literal["train", "test", "val"]):
         data_ids = getattr(self.meta_data.data, data_type)

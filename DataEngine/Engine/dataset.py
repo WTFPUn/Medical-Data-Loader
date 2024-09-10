@@ -28,6 +28,10 @@ class MedicalDataset(Dataset):
                 window_center (int): Window center for windowing the data
                 window_width (int): Window width for windowing the data
         '''
+        
+        assert os.path.exists(os.path.join(data_dir, "data_npz")), "Data directory does not exist"
+        assert os.path.exists(os.path.join(data_dir, "label_npz")), "Label directory does not exist"
+        
         self.data_ids = data_ids
         self.data_dir = data_dir
         self.transform = transform
@@ -47,11 +51,11 @@ class MedicalDataset(Dataset):
     
     def __getitem__(self, idx):
         data_id = self.data_ids[idx]
-        data_path = f"{self.data_dir}/data/img{data_id}.nii.gz"
-        label_path = f"{self.data_dir}/label/label{data_id}.nii.gz"
+        data_path = f"{self.data_dir}/data_npz/img{data_id}.npz"
+        label_path = f"{self.data_dir}/label_npz/label{data_id}.npz"
 
-        data = sitk.GetArrayFromImage(sitk.ReadImage(data_path))
-        label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))
+        data = np.load(data_path)["arr_0"]
+        label = np.load(label_path)["arr_0"]
         
         data = self.windowing(data, self.window_center, self.window_width)
         

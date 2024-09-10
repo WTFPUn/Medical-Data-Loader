@@ -2,20 +2,14 @@ import os
 import json
 import random
 import re
-import logging
 
 from .types.utils import *
+from .log import logger
 
-import threading
-from zipfile import ZipFile
 
 
 __all__ = ["get_split_meta_data", "sample_file"]
 
-logging.basicConfig(
-    format="[%(asctime)s] [%(levelname)s] %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
 
 def get_split_meta_data(
@@ -93,10 +87,10 @@ def get_split_meta_data(
         logger.error(e)
         return
 
-    with open(output_path, "w") as f:
-        json.dump(meta_data.dict(), f, indent=4)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(meta_data.model_dump(), f, indent=4)
 
-    logger.info(f"Meta data written to {output_path}")
+    logger.info(f"Done Spliting! Meta data written to {output_path}")
     return
 
 
@@ -131,25 +125,3 @@ def sample_file(directory, n=100):
 
     return
 
-
-def unzip_file(zip_path, output_path):
-    with ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(output_path)
-    return
-
-
-def unzip_file_by_dir(directory):
-    # use threading to unzip files
-    thread_num = threading.active_count() // 2
-    thread_list = []
-    for file in os.listdir(directory):
-        if file.endswith(".zip"):
-            thread = threading.Thread(
-                target=unzip_file, args=(os.path.join(directory, file), directory)
-            )
-            thread_list.append(thread)
-            thread.start()
-            if len(thread_list) == thread_num:
-                for t in thread_list:
-                    t.join()
-                thread_list = []

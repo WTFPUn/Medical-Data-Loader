@@ -39,9 +39,9 @@ class MedicalDataset(Dataset):
         self.window_width = dataset_config.window_width
         self.device = dataset_config.device
         
-    def windowing(self, img, window_center, window_width) -> np.ndarray:
+    def windowing(self, img: np.ndarray, window_center: int, window_width: int) -> np.ndarray:
         upper, lower = window_center + window_width // 2, window_center - window_width // 2
-        X = np.clip(img.copy(), lower, upper)
+        X = np.clip(img, lower, upper)
         X = X - np.min(X)
         X = X / np.max(X)
         return X
@@ -49,7 +49,7 @@ class MedicalDataset(Dataset):
     def __len__(self):
         return len(self.data_ids)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         data_id = self.data_ids[idx]
         data_path = f"{self.data_dir}/data_npz/img{data_id}.npz"
         label_path = f"{self.data_dir}/label_npz/label{data_id}.npz"

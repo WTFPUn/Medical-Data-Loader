@@ -63,7 +63,7 @@ class DataEngine:
         data_ids = getattr(self.meta_data.data, data_type)
         data_dir = self.dataset_path
         try:
-            dataset = MedicalDataset(data_ids, data_dir, dataset_config=self.dataset_config)
+            dataset = MedicalDataset(data_ids, data_dir, dataset_config=self.dataset_config, transform=self.dataset_config.compose[data_type] if data_type in self.dataset_config.compose.keys() else None)
             logger.info("Getting data from %s set", data_type)
             return dataset
         except Exception as e:

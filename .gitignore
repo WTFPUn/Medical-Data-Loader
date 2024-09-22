@@ -9,4 +9,6 @@
 venv/
 __pycache__/
 
+nnunet_mednext
+
 .DS_Store

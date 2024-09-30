@@ -28,7 +28,7 @@ class Metric(ABC, Generic[T, U]):
     """
 
     def __init__(self):
-        ...        
+        ...
 
     @abstractmethod
     def __call__(self, y_pred: T, y_true: T) -> U:
@@ -91,4 +91,8 @@ class Loss(ABC, Generic[T, U]):
         torch.Tensor
             The calculated loss value.
         """
+        pass
+    
+    @abstractmethod
+    def __str__(self):
         pass

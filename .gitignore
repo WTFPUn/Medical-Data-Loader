@@ -5,10 +5,12 @@
 *.log
 *.json
 *.npz
+*.pth
 
 venv/
 __pycache__/
-
+wandb/
 nnunet_mednext
 
 .DS_Store
+*.wandb

@@ -14,7 +14,7 @@ class MedicalDataset(Dataset):
         Dataset from torch for medical data. This dataloader return 3D image and label(3D mask)
     '''
     
-    def __init__(self, data_ids: List[str], data_dir: str, data_type: Literal["train", "test", "val"], dataset_config: DatasetConfig=DatasetConfig()):
+    def __init__(self, num_classes: int, data_ids: List[str], data_dir: str, data_type: Literal["train", "test", "val"], dataset_config: DatasetConfig=DatasetConfig()):
         '''
             Initialize the dataset
             Args:
@@ -34,6 +34,7 @@ class MedicalDataset(Dataset):
         self.window_center = dataset_config.window_center
         self.window_width = dataset_config.window_width
         self.device = dataset_config.device
+        self.num_classes = num_classes
         
     def windowing(self, img: np.ndarray) -> np.ndarray:
         upper, lower = self.window_center + self.window_width // 2, self.window_center - self.window_width // 2
@@ -41,6 +42,12 @@ class MedicalDataset(Dataset):
         X = X - np.min(X)
         X = X / np.max(X)
         return X
+    
+    def normalize(self, img: np.ndarray) -> np.ndarray:
+        # min-max normalization respect by windowing
+        upper, lower = self.window_center + self.window_width // 2, self.window_center - self.window_width // 2
+        return (img - lower) / (upper - lower)
+        
     
     def __len__(self):
         return len(self.data_ids)
@@ -53,11 +60,20 @@ class MedicalDataset(Dataset):
         data = np.load(data_path)["arr_0"]
         label = np.load(label_path)["arr_0"]
         
-        data = self.windowing(data)
+        data = self.normalize(self.windowing(data))        
         
         if self.transform:
             data = self.transform(data)
             label = self.transform(label)
+        
+        data = torch.tensor(data, dtype=torch.float32, device=self.device)
+        
+        # label is contain a number from 0 to num_classes
+        label = torch.tensor(label, dtype=torch.long, device=self.device)
             
-        return idx, torch.tensor(data, dtype=torch.float32, device=self.device), torch.tensor(label, dtype=torch.float32, device=self.device)
+        return idx, data, label
+    
+# class Pseudo3DMedical(Dataset):
+#         def __init__(self, num_classes: int, data_ids: List[str], data_dir: str, data_type: Literal["train", "test", "val"], dataset_config: DatasetConfig=DatasetConfig(), slice_size: int = 5):
+            
     

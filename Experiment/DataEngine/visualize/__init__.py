@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import TypedDict, Tuple
+from typing import List, TypedDict, Tuple
 
 
 def windowing(img, window_center, window_width):
@@ -59,6 +59,7 @@ def write_video(imgs: np.ndarray, out_path: str):
 class VisualBlock(TypedDict):
     title: str
     img: np.ndarray
+    color_map: List[str]
     
 class SubplotBlock(TypedDict):
     title: str

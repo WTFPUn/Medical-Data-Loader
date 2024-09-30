@@ -14,7 +14,7 @@ import numpy as np
 
 
 class DataEngine:
-    def __init__(self, meta_data_path: str, dataset_config: DatasetConfig=DatasetConfig(), logger: logging.Logger=logging.getLogger(__name__)):
+    def __init__(self, num_classes: int, meta_data_path: str, dataset_config: DatasetConfig=DatasetConfig(), logger: logging.Logger=logging.getLogger(__name__)):
         self.logger = logger.getChild(self.__class__.__name__)
         try:
             with open(meta_data_path, "r", encoding="utf-8") as f:
@@ -25,6 +25,7 @@ class DataEngine:
 
         self.dataset_path = self.meta_data.info.dataset_path
         self.dataset_config = dataset_config
+        self.num_classes = num_classes
         
         self.transform_to_npz()
         
@@ -64,19 +65,19 @@ class DataEngine:
         data_ids = getattr(self.meta_data.data, data_type)
         data_dir = self.dataset_path
         try:
-            dataset = MedicalDataset(data_ids, data_dir,data_type, self.dataset_config)
+            dataset = MedicalDataset(self.num_classes, data_ids, data_dir,data_type, self.dataset_config)
             self.logger.info("Getting data from %s set", data_type, extra={"contexts": "get data"})
             return dataset
         except Exception as e:
             self.logger.error("Failed to get data from %s set with error: %s", data_type, e, extra={"contexts": "get data"})
             return None
     
-    def get_dataloader(self, data_type: Literal["train", "test", "val"], batch_size: int, shuffle: bool=True):
+    def get_dataloader(self, data_type: Literal["train", "test", "val"], batch_size: int, shuffle: bool=True, num_workers: int=0):
         data = self.get_data(data_type)
         
         try:
             self.logger.info("Creating dataloader for %s set", data_type, extra={"contexts": "create dataloader"})
-            return DataLoader(data, batch_size=batch_size, shuffle=shuffle)
+            return DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
         except Exception as e:
             self.logger.error("Failed to create dataloader for %s set with error: %s", data_type, e, extra={"contexts": "create dataloader"})
             return None

@@ -1,5 +1,4 @@
 pytorch
-torchaudio
 torchvision
 numpy
 pandas
@@ -8,3 +7,20 @@ pydantic
 nibabel
 SimpleITK
 torchio
+tqdm
+dicom2nifti
+scikit-image>=0.14
+medpy
+scipy
+batchgenerators>=0.23
+numpy
+scikit-learn
+SimpleITK
+pandas
+requests
+nibabel
+tifffile
+matplotlib
+wandb
+opencv-python
+pydantic

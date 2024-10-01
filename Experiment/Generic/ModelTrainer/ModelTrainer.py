@@ -32,7 +32,7 @@ class NewTrainConfig:
     lr: float
     weight_save_period: int
     epoch: int
-
+    optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam
 
 @dataclass
 class ContinueTrainConfig:

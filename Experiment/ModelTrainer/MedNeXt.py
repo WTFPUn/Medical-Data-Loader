@@ -86,12 +86,7 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
         )
             ep_range = range(train_config.current_epoch, train_config.epoch + train_config.current_epoch)
 
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=train_config.lr)  # Example optimizer
-        scaler = torch.amp.GradScaler("cuda")  # Mixed precision scaler
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)  # Example scheduler
-        
-        accumulation_steps = torch.tensor(train_config.accumulation_steps, dtype=torch.float32).to(self.device)
-
+        optimizer = train_config.optimizer(self.model.parameters(), lr=train_config.lr)
         run.watch(self.model, log="all")
         
         for ep in ep_range:

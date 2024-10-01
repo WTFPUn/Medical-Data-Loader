@@ -65,11 +65,6 @@ class MedicalDataset(Dataset):
         if self.transform:
             data = self.transform(data)
             label = self.transform(label)
-        
-        data = torch.tensor(data, dtype=torch.float32, device=self.device)
-        
-        # label is contain a number from 0 to num_classes
-        label = torch.tensor(label, dtype=torch.long, device=self.device)
             
         return idx, data, label
     

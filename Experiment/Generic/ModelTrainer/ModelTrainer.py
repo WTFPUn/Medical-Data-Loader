@@ -35,11 +35,7 @@ class NewTrainConfig:
     optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam
 
 @dataclass
-class ContinueTrainConfig:
-    accumulation_steps: int
-    lr: float
-    weight_save_period: int
-    epoch: int
+class ContinueTrainConfig(NewTrainConfig):
     project_name: str
     run_id: str
     current_epoch: int = 0

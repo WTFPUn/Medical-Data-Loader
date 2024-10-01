@@ -77,7 +77,7 @@ class DataEngine:
         
         try:
             self.logger.info("Creating dataloader for %s set", data_type, extra={"contexts": "create dataloader"})
-            return DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+            return DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=True)
         except Exception as e:
             self.logger.error("Failed to create dataloader for %s set with error: %s", data_type, e, extra={"contexts": "create dataloader"})
             return None

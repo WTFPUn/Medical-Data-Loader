@@ -64,12 +64,15 @@ class MedicalDataset(Dataset):
         data = np.load(data_path,mmap_mode='r')["arr_0"]
         label = np.load(label_path, mmap_mode='r')["arr_0"]
         
-        data = self.normalize(self.windowing(data))        
+        data = self.preprocess(data)       
         
+        # Apply transforms
         if self.transform:
-            data = self.transform(data)
-            label = self.transform(label)
-            
+            data, label = self.transform([data, label])
+        else:
+            data = torch.unsqueeze(torch.from_numpy(data), 0).float()  # Shape: (1, W, H, D)
+            label = torch.from_numpy(label.squeeze(0)).long()  # Shape: (W, H, D)
+
         return idx, data, label
     
 # class Pseudo3DMedical(Dataset):

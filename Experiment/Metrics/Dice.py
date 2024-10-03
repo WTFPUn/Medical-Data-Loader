@@ -5,44 +5,40 @@ import torch
 class DSC(Metric[torch.Tensor, torch.Tensor]):
     eps = 1e-6
     
-    def __init__(self):
+    def __init__(self, num_classes=3):
         super(DSC, self).__init__()
         self.name = "Dice Similarity Coefficient"
+        self.num_classes = num_classes
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """
-        Evaluate the Dice Similarity Coefficient between the 3D ground truth and the 3D prediction
-
-        Args:
-            y_true (torch.Tensor): The ground truth tensor(Batch Size, Class, Depth, Height, Width).
-            y_pred (torch.Tensor): The prediction tensor(Batch Size, Class, Depth, Height, Width).
-
-        Returns:
-            torch.Tensor: The Dice Similarity Coefficient between the ground truth and the prediction.
-        """
+        # Apply softmax to y_pred
+        if y_true.dtype != torch.long:
+            y_true = y_true.long()
+        
+        if y_pred.dtype != torch.float32:
+            y_pred = y_pred.float()
+        
+        y_true = y_true.squeeze(1)
         y_pred = torch.nn.functional.softmax(y_pred, dim=1)
-        y_true = torch.nn.functional.one_hot(y_true, y_pred.size(1)).permute(0,5,1,2,3,4).squeeze(2)
+        
+        # Convert y_true to one-hot encoding
+        y_true = torch.nn.functional.one_hot(y_true, self.num_classes).permute(0,4,1,2,3).contiguous()
         
         assert y_true.size() == y_pred.size(), "The size of the ground truth and the prediction should be the same."
         
+        # Flatten tensors
+        y_pred = y_pred.view(y_pred.size(0), y_pred.size(1), -1)
+        y_true = y_true.view(y_true.size(0), y_true.size(1), -1)
         
-        pred = y_pred.contiguous().view(y_pred.size(0), y_pred.size(1), -1)
-        target = y_true.contiguous().view(y_true.size(0), y_true.size(1), -1)
+        # Compute intersection and sums
+        intersection = (y_pred * y_true).to(torch.float32).sum(dim=2)
+        pred_sum = y_pred.to(torch.float32).sum(dim=2)
+        target_sum = y_true.to(torch.float32).sum(dim=2)
         
-        # Compute intersection (True Positives)
-        intersection = (pred * target).sum(dim=2)
-        
-        # Compute the sums of the predicted and target areas
-        pred_sum = pred.sum(dim=2)
-        target_sum = target.sum(dim=2)
-        
-        # Dice Coefficient formula
-        dice = (2.0 * intersection + self.eps) / (pred_sum + target_sum + self.eps)
-        
-        # divide by the number of classes
-        dice = dice.mean(dim=1)
-        
-        return dice.mean(dim=0)
+        # Compute Dice coefficient
+        dice = ((2.0 * intersection + self.eps) / (pred_sum + target_sum + self.eps))
+
+        return dice.mean().to(torch.float16)
        
 
     def __str__(self):
@@ -51,16 +47,24 @@ class DSC(Metric[torch.Tensor, torch.Tensor]):
 class DSCLoss(Metric[torch.Tensor, torch.Tensor]):
     eps = 1e-6
     
-    def __init__(self):
+    def __init__(self, num_classes: int):
         super(DSCLoss, self).__init__()
-        self.name = "Dice Similarity Coefficient"
+        self.name = "Dice Similarity Loss"
+        self.num_classes = num_classes
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         # Apply softmax to y_pred
+        if y_true.dtype != torch.long:
+            y_true = y_true.long()
+            
+        if y_pred.dtype != torch.float32:
+            y_pred = y_pred.float()
+        
+        y_true = y_true.squeeze(1)
         y_pred = torch.nn.functional.softmax(y_pred, dim=1)
         
         # Convert y_true to one-hot encoding
-        y_true = torch.nn.functional.one_hot(y_true, y_pred.size(1)).permute(0,5,1,2,3,4).squeeze(2)
+        y_true = torch.nn.functional.one_hot(y_true, self.num_classes).permute(0,4,1,2,3).contiguous()
         
         assert y_true.size() == y_pred.size(), "The size of the ground truth and the prediction should be the same."
         
@@ -77,7 +81,7 @@ class DSCLoss(Metric[torch.Tensor, torch.Tensor]):
         dice = (2.0 * intersection + self.eps) / (pred_sum + target_sum + self.eps)
         
         # Compute Dice loss
-        dice_loss = 1.0 - dice.mean()
+        dice_loss = 1.0 - dice.mean().to(torch.float16)
 
         return dice_loss
 

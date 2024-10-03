@@ -4,32 +4,24 @@ import torch
 
 class Accuracy(Metric[torch.Tensor, torch.Tensor]):
     def __init__(self):
+        super(Accuracy, self).__init__()
         self.name = "Accuracy"
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """
-        Calculate the accuracy of the predictions.
+        Compute Accuracy for segmentation.
 
         Args:
-            y_pred (torch.Tensor): The predicted logits tensor (B, C, D, H, W).
-            y_true (torch.Tensor): The ground truth tensor (B, D, H, W) with class indices.
+            y_pred (torch.Tensor): Predicted logits. Shape: (B, C, W, H, D)
+            y_true (torch.Tensor): Ground truth labels. Shape: (B, W, H, D)
 
         Returns:
-            torch.Tensor: The accuracy value.
+            float: Accuracy score.
         """
-        # Get the predicted class indices
-        y_pred_classes = torch.argmax(y_pred, dim=1)  # Shape: (B, D, H, W)
+        preds = torch.argmax(y_pred, dim=1)  # Shape: (B, W, H, D)
+        correct = (preds == y_true).float()
+        accuracy = correct.sum() / correct.numel()
+        return accuracy
         
-        # Flatten the tensors
-        y_pred_flat = y_pred_classes.view(-1)  # Shape: (B * D * H * W)
-        y_true_flat = y_true.view(-1)  # Shape: (B * D * H * W)
-
-        # Calculate accuracy
-        correct = (y_pred_flat == y_true_flat).sum().item()
-        total = y_true_flat.numel()
-        accuracy = correct / total if total > 0 else 0
-
-        return torch.tensor(accuracy)
-
     def __str__(self):
-        return "Accuracy"
+        return self.name

@@ -61,8 +61,8 @@ class MedicalDataset(Dataset):
         data_path = f"{self.data_dir}/data_npz/img{data_id}.npz"
         label_path = f"{self.data_dir}/label_npz/label{data_id}.npz"
 
-        data = np.load(data_path)["arr_0"]
-        label = np.load(label_path)["arr_0"]
+        data = np.load(data_path,mmap_mode='r')["arr_0"]
+        label = np.load(label_path, mmap_mode='r')["arr_0"]
         
         data = self.normalize(self.windowing(data))        
         

@@ -25,8 +25,10 @@ __all__ = [
     "TrainConfig",
 ]
 
-
-@dataclass
+###########################
+# from: https://peps.python.org/pep-3102/
+###########################
+@dataclass(kw_only=True)
 class NewTrainConfig:
     accumulation_steps: int
     lr: float
@@ -34,7 +36,7 @@ class NewTrainConfig:
     epoch: int
     optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam
 
-@dataclass
+@dataclass(kw_only=True)
 class ContinueTrainConfig(NewTrainConfig):
     project_name: str
     run_id: str

@@ -36,17 +36,21 @@ class MedicalDataset(Dataset):
         self.device = dataset_config.device
         self.num_classes = num_classes
         
-    def windowing(self, img: np.ndarray) -> np.ndarray:
-        upper, lower = self.window_center + self.window_width // 2, self.window_center - self.window_width // 2
-        X = np.clip(img, lower, upper)
-        X = X - np.min(X)
-        X = X / np.max(X)
-        return X
-    
-    def normalize(self, img: np.ndarray) -> np.ndarray:
-        # min-max normalization respect by windowing
-        upper, lower = self.window_center + self.window_width // 2, self.window_center - self.window_width // 2
-        return (img - lower) / (upper - lower)
+    def preprocess(self, img: np.ndarray) -> np.ndarray:
+        '''
+            Apply windowing and normalization to the image.
+
+            Args:
+                img (np.ndarray): 3D image array.
+
+            Returns:
+                np.ndarray: Preprocessed image array scaled between [0, 1].
+        '''
+        lower = self.window_center - self.window_width // 2
+        upper = self.window_center + self.window_width // 2
+        img = np.clip(img, lower, upper)
+        img = (img - lower) / (upper - lower)
+        return img
         
     
     def __len__(self):

@@ -1,4 +1,4 @@
-pytorch
+torch
 torchvision
 numpy
 pandas
@@ -9,10 +9,8 @@ SimpleITK
 torchio
 tqdm
 dicom2nifti
-scikit-image>=0.14
 medpy
 scipy
-batchgenerators>=0.23
 numpy
 scikit-learn
 SimpleITK

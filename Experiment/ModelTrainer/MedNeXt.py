@@ -112,7 +112,7 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
                 input = input.to(self.device, non_blocking=True)
                 target = target.to(self.device, non_blocking=True)
 
-                with torch.cuda.amp.autocast():
+                with autocast():
                     output = self.model(input)
                     try:
                         loss = self.calculate_loss(output, target) / accumulation_steps

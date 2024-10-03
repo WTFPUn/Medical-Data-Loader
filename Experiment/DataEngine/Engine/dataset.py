@@ -75,7 +75,3 @@ class MedicalDataset(Dataset):
 
         return idx, data, label
     
-# class Pseudo3DMedical(Dataset):
-#         def __init__(self, num_classes: int, data_ids: List[str], data_dir: str, data_type: Literal["train", "test", "val"], dataset_config: DatasetConfig=DatasetConfig(), slice_size: int = 5):
-            
-    

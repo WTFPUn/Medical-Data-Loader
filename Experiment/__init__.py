@@ -3,3 +3,4 @@ from .Generic import *
 from .Metrics import *
 from .ModelTrainer import *
 from .Transform import *
+from .Optimizer import *

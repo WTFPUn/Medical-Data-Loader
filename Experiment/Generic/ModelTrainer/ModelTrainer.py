@@ -25,6 +25,7 @@ __all__ = [
     "TrainConfig",
 ]
 
+
 ###########################
 # from: https://peps.python.org/pep-3102/
 ###########################
@@ -35,6 +36,7 @@ class NewTrainConfig:
     weight_save_period: int
     epoch: int
     optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam
+
 
 @dataclass(kw_only=True)
 class ContinueTrainConfig(NewTrainConfig):

@@ -89,6 +89,7 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
                 train_config.current_epoch,
                 train_config.epoch + train_config.current_epoch,
             )
+            self.model.load_state_dict(torch.load(train_config.model_path))
 
         optimizer = train_config.optimizer(self.model.parameters(), lr=train_config.lr)
         scaler = GradScaler()  # Mixed precision scaler
@@ -103,7 +104,7 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
             # Training loop
             self.model.train()
             cum_loss = 0
-            cum_train_metric: List[Dict[str, numpy.ndarray]] = []
+            cum_train_metric: Dict[str, numpy.ndarray] = {}
             
             optimizer.zero_grad()  # Zero out gradients before starting
             for i, (idx, input, target) in tqdm.tqdm(
@@ -134,15 +135,19 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
                 cum_loss += loss.item() * accumulation_steps
 
                 metric_values = self.calculate_metrics(output, target)
-                cum_train_metric.append({k: v.detach() for k, v in metric_values.items()})
+                # cum_train_metric.append({k: v.detach() for k, v in metric_values.items()})
+                cum_train_metric = {
+                    k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
+                    for k, v in metric_values.items()
+                }
 
             train_output = {
-                f"train_{k}": sum([m[k] for m in cum_train_metric]) / len(cum_train_metric)
-                for k in cum_train_metric[0].keys()
+                f"train_{k}": v / len(train)
+                for k, v in cum_train_metric.items()
             }
 
             self.model.eval()
-            cum_val_metric = []
+            cum_val_metric = {}
 
             # Validation loop
             with torch.no_grad():
@@ -154,11 +159,14 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
                     output = self.model(input)
 
                     metric_values = self.calculate_metrics(output, target)
-                    cum_val_metric.append({k: v.detach() for k, v in metric_values.items()})
+                    cum_val_metric = {
+                        k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)
+                        for k, v in metric_values.items()
+                    }
 
             val_output = {
-                f"val_{k}": torch.stack([m[k] for m in cum_val_metric]).mean()
-                for k in cum_val_metric[0].keys()
+                f"val_{k}": v / len(val)
+                for k, v in cum_val_metric.items()
             }
             
             # merge train and val output

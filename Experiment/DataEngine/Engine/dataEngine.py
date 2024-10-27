@@ -27,7 +27,7 @@ class DataEngine:
         self.dataset_config = dataset_config
         self.num_classes = num_classes
         
-        self.transform_to_npz()
+        # self.transform_to_npz()
         
         logger.info("DataEngine initialized with meta data from %s", meta_data_path, extra={"contexts": "initialize data engine"})
         

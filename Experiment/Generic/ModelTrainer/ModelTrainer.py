@@ -43,6 +43,7 @@ class ContinueTrainConfig(NewTrainConfig):
     project_name: str
     run_id: str
     current_epoch: int = 0
+    model_path: str = ""
 
 
 TrainConfig = NewTrainConfig | ContinueTrainConfig

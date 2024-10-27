@@ -4,8 +4,11 @@ import os
 from torch.utils.data import Dataset
 import torch
 import numpy as np
+import psutil
 
 from ..types import DatasetConfig
+
+
 
 
 class MedicalDataset(Dataset):
@@ -34,8 +37,8 @@ class MedicalDataset(Dataset):
         self.window_width = dataset_config.window_width
         self.device = dataset_config.device
         self.num_classes = num_classes
-        
-    def preprocess(self, img: np.ndarray) -> np.ndarray:
+    
+    def preprocess(self, img: torch.Tensor):
         '''
             Apply windowing and normalization to the image.
 
@@ -45,9 +48,10 @@ class MedicalDataset(Dataset):
             Returns:
                 np.ndarray: Preprocessed image array scaled between [0, 1].
         '''
+        
         lower = self.window_center - self.window_width // 2
         upper = self.window_center + self.window_width // 2
-        img = np.clip(img, lower, upper)
+        img = torch.clip(img, lower, upper)
         img = (img - lower) / (upper - lower)
         return img
         
@@ -60,17 +64,19 @@ class MedicalDataset(Dataset):
         data_path = f"{self.data_dir}/data_npz/img{data_id}.npz"
         label_path = f"{self.data_dir}/label_npz/label{data_id}.npz"
 
-        data = np.load(data_path,mmap_mode='r')["arr_0"]
-        label = np.load(label_path, mmap_mode='r')["arr_0"]
-        
-        data = self.preprocess(data)       
-        
+        # Load data as memory-mapped arrays without changing dtype
+        data = torch.from_numpy(np.load(data_path, mmap_mode='r')["arr_0"]).unsqueeze(0).float()
+        label = torch.from_numpy(np.load(label_path, mmap_mode='r')["arr_0"]).unsqueeze(0).long()
+
+        # Preprocess data without loading the entire array into memory
+        data = self.preprocess(data)
+
         # Apply transforms
         if self.transform:
             data, label = self.transform([data, label])
         else:
-            data = torch.unsqueeze(torch.from_numpy(data), 0).float()  # Shape: (1, W, H, D)
-            label = torch.from_numpy(label.squeeze(0)).long()  # Shape: (W, H, D)
+            data = torch.unsqueeze(torch.from_numpy(data), 0).float().to(self.device, non_blocking=True)
+            label = torch.from_numpy(label).long().to(self.device, non_blocking=True)
 
         return idx, data, label
     

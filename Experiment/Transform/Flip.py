@@ -22,7 +22,7 @@ class RandomFlip3D:
         self.axes = axes
         self.flip_prob = flip_prob
 
-    def __call__(self, transform_data: Tuple[torch.tensor, ...]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __call__(self, transform_data: Tuple[torch.tensor, ...]):
         """
         Apply random flipping to the input and target voxels.
 

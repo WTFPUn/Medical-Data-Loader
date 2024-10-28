@@ -2,8 +2,8 @@ from torch import nn
 import torch
 from .part import DoubleConv, Down, Up, OutConv, DepthwiseSeparableConv3d
 
-class NnUnet(nn.Module):
-    def __init__(self, num_input_channels: int, num_classes: int,trilinear: bool = False, use_ds_conv: bool = False):
+class NnUnetBase(nn.Module):
+    def __init__(self, num_input_channels: int, num_classes: int, trilinear: bool = False, use_ds_conv: bool = False):
         super().__init__()
         _channels = (32, 64, 128, 256, 512)
         self.num_classes = num_classes
@@ -14,8 +14,8 @@ class NnUnet(nn.Module):
 
         self.inc = DoubleConv(num_input_channels, _channels[0], conv_layer=self.convtype)
         self.down = nn.ModuleList([Down(_channels[i], _channels[i + 1], conv_layer=self.convtype) for i in range(4)])
-        self.up = nn.ModuleList([Up(_channels[i], _channels[i + 1], conv_layer=self.convtype) for i in range(4)])
-        self.outc = OutConv(_channels[0], num_classes, conv_layer=self.convtype)
+        self.up = nn.ModuleList([Up(_channels[i], _channels[i - 1], trilinear=trilinear, conv_layer=self.convtype) for i in range(4, 0, -1)])
+        self.outc = OutConv(_channels[0], num_classes)
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -33,7 +33,7 @@ class NnUnet(nn.Module):
 
 if __name__ == '__main__':
     model = NnUnet(1, 3, trilinear=False, use_ds_conv= True)
-    x = torch.randn((1, 1, 128, 128, 128))
+    x = torch.randn((4, 1, 128, 128, 128))
     y = model(x)
     print(y.shape)
-    print(y)
+    # print(y)

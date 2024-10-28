@@ -3,17 +3,17 @@ import torch
 from typing import List, Tuple, Union, Literal, Type
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None, conv_layer = nn.Conv3d, act_fn = nn.ReLU):
+    def __init__(self, in_channels, out_channels, mid_channels=None, conv_layer = nn.Conv3d):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
         self.double_conv = nn.Sequential(
             conv_layer(in_channels, mid_channels, kernel_size=3, padding=1),
-            nn.BatchNorm3d(mid_channels),
-            act_fn(inplace=True),
+            nn.InstanceNorm3d(mid_channels),
+            nn.LeakyReLU(inplace=True, negative_slope=1e-2),
             conv_layer(mid_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm3d(out_channels),
-            act_fn(inplace=True)
+            nn.InstanceNorm3d(out_channels),
+            nn.LeakyReLU(inplace=True, negative_slope=1e-2)
         )
     
     def forward(self, x):
@@ -24,7 +24,7 @@ class Down(nn.Module):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool3d(2),
-            DoubleConv(in_channels, out_channels, conv_layer=conv_layer, act_fn=nn.LeakyReLU)
+            DoubleConv(in_channels, out_channels, conv_layer=conv_layer)
         )
 
     def forward(self, x):

@@ -12,6 +12,7 @@ from Experiment import (
     ContinueTrainConfig,
     logger,
     MedNeXt,
+    NnUnet,
     RandomFlip3D,
     Resize,
 )
@@ -53,10 +54,9 @@ experimentOne = Experimenting[torch.tensor, torch.tensor](
     logger,
 )
 experimentOne.add_trainer(
-    MedNeXt,
-    "mednext_second",
+    NnUnet,
+    "nnUnet_first",
     num_input_channels=1,
-    model_id="S",
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

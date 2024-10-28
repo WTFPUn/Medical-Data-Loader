@@ -55,8 +55,9 @@ experimentOne = Experimenting[torch.tensor, torch.tensor](
 )
 experimentOne.add_trainer(
     NnUnet,
-    "nnUnet_first",
+    "nnUnet_2xdim",
     num_input_channels=1,
+    channels_multiplier=2,
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -31,6 +31,7 @@ class NnUnet(ModelTrainer[generic_input, generic_output]):
         **kwargs,
     ):
         self.num_input_channels = kwargs.get("num_input_channels", 1)
+        self.channels_multiplier = kwargs.get("channels_multiplier", 1)
         super(NnUnet, self).__init__(
             logger,
             num_classes,
@@ -48,6 +49,7 @@ class NnUnet(ModelTrainer[generic_input, generic_output]):
             num_classes=self.num_classes,
             trilinear=False,
             use_ds_conv=True,
+            channels_multiplier=self.channels_multiplier,
         )
 
     def train(
@@ -181,7 +183,7 @@ class NnUnet(ModelTrainer[generic_input, generic_output]):
         self.model.eval()
         self.logger.info("Testing started.", extra={"contexts": "start testing"})
         for i, (idx, input, target) in enumerate(test):
-            output = self.model(input).detach()
+            output = self.model(input.to(self.device, non_blocking=True))
             loss = self.calculate_loss(output, target).item()
             metric_values = {
                 k: v.detach().cpu().numpy()

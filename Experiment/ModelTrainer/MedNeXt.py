@@ -191,7 +191,7 @@ class MedNeXt(ModelTrainer[generic_input, generic_output]):
         self.model.eval()
         self.logger.info("Testing started.", extra={"contexts": "start testing"})
         for i, (idx, input, target) in enumerate(test):
-            output = self.model(input).detach()
+            output = self.model(input.to(self.device, non_blocking=True)).detach()
             loss = self.calculate_loss(output, target).item()
             metric_values = {
                 k: v.detach().cpu().numpy()

@@ -59,6 +59,12 @@ experimentOne.add_trainer(
     num_input_channels=1,
     channels_multiplier=2,
 )
+experimentOne.add_trainer(
+    NnUnet,
+    "nnUnet_4xdim",
+    num_input_channels=1,
+    channels_multiplier=4,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,7 +76,7 @@ experimentOne.run(
         weight_save_period=10,
         accumulation_steps=16,
         lr=1e-4,
-        optimizer=torch.optim.Adam,
+        optimizer=torch.optim.AdamW
     ),
 )
 # experimentOne.run(

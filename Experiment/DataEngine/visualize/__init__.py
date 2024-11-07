@@ -12,7 +12,7 @@ def windowing(img, window_center, window_width):
     return img
 
 
-def get_arrays_by_plot(arr1: np.ndarray, arr2: np.ndarray, title1: str = None, title2: str = None, main_title: str = None) -> np.ndarray:
+def get_arrays_by_plot(arr1: np.ndarray, arr2: np.ndarray, title1: str = None, title2: str = None, main_title: str = None):
     """
     Display two arrays as images side by side in a plot.
 
@@ -72,7 +72,7 @@ def get_array_by_subplot(subplot_block: SubplotBlock) -> np.ndarray:
     fig.suptitle(subplot_block["title"])
     
     for i, visual_block in enumerate(subplot_block["visual_blocks"]):
-        ax[i].imshow(visual_block["img"], cmap='gray')
+        ax[i].imshow(visual_block["img"], cmap=visual_block["color_map"] if "color_map" in visual_block else 'gray')
         ax[i].set_title(visual_block["title"])
         
     fig.canvas.draw_idle()

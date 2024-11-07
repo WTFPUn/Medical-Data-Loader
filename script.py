@@ -12,10 +12,12 @@ from Experiment import (
     ContinueTrainConfig,
     logger,
     MedNeXt,
+    ResEncUnet,
     NnUnet,
     RandomFlip3D,
     Resize,
 )
+import torch.nn as nn
 import torch
 from torchvision import datasets, transforms
 
@@ -54,17 +56,21 @@ experimentOne = Experimenting[torch.tensor, torch.tensor](
     logger,
 )
 experimentOne.add_trainer(
-    NnUnet,
-    "nnUnet_2xdim",
-    num_input_channels=1,
-    channels_multiplier=2,
+    ResEncUnet,
+    "ResEncUnetM",
+    n_stages=6, features_per_stage=(32, 64, 128, 256, 320, 320),
+    conv_op=nn.Conv3d, kernel_sizes=3, strides=(1, 2, 2, 2, 2, 2),
+    n_blocks_per_stage=(1, 3, 4, 6, 6, 6),
+    n_conv_per_stage_decoder=(1, 1, 1, 1, 1),
+    conv_bias=True, norm_op=nn.InstanceNorm3d, norm_op_kwargs={}, dropout_op=None,
+    nonlin=nn.LeakyReLU, nonlin_kwargs={'inplace': True}, deep_supervision=False
 )
-experimentOne.add_trainer(
-    NnUnet,
-    "nnUnet_4xdim",
-    num_input_channels=1,
-    channels_multiplier=4,
-)
+# experimentOne.add_trainer(
+#     NnUnet,
+#     "nnUnet_8xdim",
+#     num_input_channels=1,
+#     channels_multiplier=8,
+# )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

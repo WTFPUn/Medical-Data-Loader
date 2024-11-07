@@ -12,5 +12,4 @@ class Resize:
         self, transform_data: Tuple[torch.tensor, ...]
     ) -> Tuple[torch.tensor, torch.tensor]:
 
-        data, label = self.resize(transform_data[0]), self.resize(transform_data[1])
-        return data, label
+        return self.resize(transform_data[0]), self.resize(transform_data[1])

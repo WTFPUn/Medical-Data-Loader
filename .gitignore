@@ -6,11 +6,15 @@
 *.json
 *.npz
 *.pth
+*.jpg
 
 venv/
 __pycache__/
 wandb/
 nnunet_mednext
+nnUnet
+nnunetv2
+dynamic_network_architectures
 
 .DS_Store
 *.wandb

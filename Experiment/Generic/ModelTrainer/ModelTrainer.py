@@ -197,26 +197,31 @@ class ModelTrainer(ABC, Generic[T, U]):
                 train_config.epoch + train_config.current_epoch,
             )
             self.model.load_state_dict(torch.load(train_config.model_path))
-        
         else:
             raise TypeError("Invalid train_config type")
 
         optimizer = train_config.optimizer(self.model.parameters(), lr=train_config.lr)
-        scaler = GradScaler()  # Mixed precision scaler
+        scaler = GradScaler()
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=len(train) * train_config.epoch
-        )  # Example scheduler
+        )
 
         accumulation_steps = train_config.accumulation_steps
         run.watch(self.model, log="all")
 
+        # Compile the optimizer's step function
+        @torch.compile
+        def compiled_step():
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+
         for ep in ep_range:
-            # Training loop
             self.model.train()
             cum_loss = 0
             cum_train_metric: Dict[str, numpy.ndarray] = {}
-            
-            optimizer.zero_grad()  # Zero out gradients before starting
+
+            optimizer.zero_grad()
             for i, (idx, input, target) in tqdm.tqdm(
                 enumerate(train), total=len(train)
             ):
@@ -238,14 +243,11 @@ class ModelTrainer(ABC, Generic[T, U]):
                     continue
 
                 if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train):
-                    scaler.step(optimizer)
-                    scaler.update()
-                    optimizer.zero_grad()
+                    compiled_step()
 
                 cum_loss += loss.item() * accumulation_steps
 
                 metric_values = self.calculate_metrics(output, target)
-                # cum_train_metric.append({k: v.detach() for k, v in metric_values.items()})
                 cum_train_metric = {
                     k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
                     for k, v in metric_values.items()
@@ -259,11 +261,10 @@ class ModelTrainer(ABC, Generic[T, U]):
             self.model.eval()
             cum_val_metric = {}
 
-            # Validation loop
             with torch.no_grad():
                 for i, (idx, input, target) in tqdm.tqdm(
                     enumerate(val), total=len(val)
-                ):  
+                ):
                     input = input.to(self.device, non_blocking=True)
                     target = target.to(self.device, non_blocking=True)
                     output = self.model(input)

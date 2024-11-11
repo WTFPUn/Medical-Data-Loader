@@ -6,7 +6,7 @@ class Recall(Metric[torch.Tensor, torch.Tensor]):
     def __init__(self, num_classes: int):
         super(Recall, self).__init__()
         self.num_classes = num_classes
-        self.name = "Recall (Sensitivity)"
+
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """
@@ -35,4 +35,4 @@ class Recall(Metric[torch.Tensor, torch.Tensor]):
         return recall
         
     def __str__(self):
-        return self.name
+        return self.__class__.__name__

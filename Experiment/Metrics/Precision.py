@@ -6,7 +6,6 @@ class Precision(Metric[torch.Tensor, torch.Tensor]):
     def __init__(self, num_classes: int):
         super(Precision, self).__init__()
         self.num_classes = num_classes
-        self.name = "Precision"
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """
@@ -35,4 +34,4 @@ class Precision(Metric[torch.Tensor, torch.Tensor]):
         return precision
         
     def __str__(self):
-        return self.name
+        return self.__class__.__name__

@@ -7,7 +7,6 @@ class DSC(Metric[torch.Tensor, torch.Tensor]):
     
     def __init__(self, num_classes=3):
         super(DSC, self).__init__()
-        self.name = "Dice Similarity Coefficient"
         self.num_classes = num_classes
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -42,14 +41,13 @@ class DSC(Metric[torch.Tensor, torch.Tensor]):
        
 
     def __str__(self):
-        return self.name
+        return self.__class__.__name__
 
 class DSCLoss(Metric[torch.Tensor, torch.Tensor]):
     eps = 1e-6
     
     def __init__(self, num_classes: int):
         super(DSCLoss, self).__init__()
-        self.name = "Dice Similarity Loss"
         self.num_classes = num_classes
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -86,5 +84,5 @@ class DSCLoss(Metric[torch.Tensor, torch.Tensor]):
         return dice_loss
 
     def __str__(self):
-        return self.name
+        return self.__class__.__name__
 

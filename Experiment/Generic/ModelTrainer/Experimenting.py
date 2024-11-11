@@ -92,7 +92,15 @@ class Experimenting(Generic[T, U]):
 
     def __Kfold_run(self, batch_size: int, num_workers: int, train_config: TrainConfig):
         self.logger.info("Experimenting started.", extra={"contexts": "run experiment"})
-        results = []
+        results = {
+            "train": {
+                l.__class__.__name__: [] for l in self.metrics
+            },
+            "val": {
+                l.__class__.__name__: [] for l in self.metrics
+            }
+            
+        }
         
         for i in range(self.meta_data.info.k):
             train_data = self.data_engine.get_dataloader_for_kfold("train", i, batch_size, True, num_workers)
@@ -102,7 +110,11 @@ class Experimenting(Generic[T, U]):
             trainer = self.train_method[i]
             trainer.train(train_data, val_data, train_config)
             trainer.test(test_data)
-            results.append(trainer.get_result())
+            train_result = trainer.get_result()
+            for metric in [str(l) for l in self.metrics]:
+                results["train"][metric].append([train_result["train"][j]["train_"+metric] for j in range(len(train_result["train"]))])
+                results["val"][metric].append([train_result["val"][j]["val_"+metric] for j in range(len(train_result["val"]))])
+                
             # for trainer in self.train_method:
                 
             #     trainer.train(train_data, val_data, train_config)
@@ -111,13 +123,20 @@ class Experimenting(Generic[T, U]):
                 
         # map result to find mean of each metric
         os.makedirs("k_fold_result", exist_ok=True)
-        results = {
-            "train": np.array([r["train"] for r in results]).mean(axis=0),
-            "val": np.array([r["val"] for r in results]).mean(axis=0)
+        # mean of each metric for each epoch
+        metric_name = [str(l) for l in self.metrics]
+        mean_results = {
+            "train": {
+                l: np.mean(results["train"][l], axis=0).tolist() for l in metric_name 
+            },
+            "val": {
+                l: np.mean(results["val"][l], axis=0).tolist() for l in metric_name
+            }
         }
         
+        
         with open("k_fold_result/"+self.experiment_name+".json", "w") as f:
-            json.dump(results, f)
+            json.dump(mean_results, f)
                 
 
     def export_result(self, json_name: str):

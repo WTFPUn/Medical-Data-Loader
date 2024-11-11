@@ -5,7 +5,6 @@ import torch
 class Accuracy(Metric[torch.Tensor, torch.Tensor]):
     def __init__(self):
         super(Accuracy, self).__init__()
-        self.name = "Accuracy"
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """
@@ -24,4 +23,4 @@ class Accuracy(Metric[torch.Tensor, torch.Tensor]):
         return accuracy
         
     def __str__(self):
-        return self.name
+        return self.__class__.__name__

@@ -5,7 +5,6 @@ import torch
 class IoU(Metric[torch.Tensor, torch.Tensor]):
     def __init__(self):
         self.eps = 1e-6
-        self.name = "Intersection over Union (IoU)"
 
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """
@@ -34,4 +33,4 @@ class IoU(Metric[torch.Tensor, torch.Tensor]):
         return torch.tensor(iou)
 
     def __str__(self):
-        return "IoU"
+        return self.__class__.__name__

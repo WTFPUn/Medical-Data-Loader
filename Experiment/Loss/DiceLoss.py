@@ -7,7 +7,6 @@ class DiceLoss(Loss[torch.Tensor, torch.Tensor]):
     
     def __init__(self):
         super(DiceLoss, self).__init__()
-        self.name = "Dice Similarity Coefficient"
 
     def __call__(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> torch.Tensor:
         """
@@ -41,4 +40,4 @@ class DiceLoss(Loss[torch.Tensor, torch.Tensor]):
        
 
     def __str__(self):
-        return self.name
+        return self.__class__.__name__

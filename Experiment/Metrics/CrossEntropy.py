@@ -29,4 +29,4 @@ class CE(Metric[torch.Tensor, torch.Tensor]):
         return loss
     
     def __str__(self):
-        return "Cross Entropy Loss"
+        return self.__class__.__name__

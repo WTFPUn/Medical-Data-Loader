@@ -20,6 +20,9 @@ from Experiment import (
 import torch.nn as nn
 import torch
 from torchvision import datasets, transforms
+import os
+
+# os.environ['WANDB_MODE'] = 'offline'
 
 torch.manual_seed(0)
 datasetConfig = DatasetConfig(
@@ -55,16 +58,23 @@ experimentOne = Experimenting[torch.tensor, torch.tensor](
     3,
     logger,
 )
+# experimentOne.add_trainer(
+#     ResEncUnet,
+#     "ResEncUnetM",
+#     n_stages=6, features_per_stage=(32, 64, 128, 256, 320, 320),
+#     conv_op=nn.Conv3d, kernel_sizes=3, strides=(1, 2, 2, 2, 2, 2),
+#     n_blocks_per_stage=(1, 3, 4, 6, 6, 6),
+#     n_conv_per_stage_decoder=(1, 1, 1, 1, 1),
+#     conv_bias=True, norm_op=nn.InstanceNorm3d, norm_op_kwargs={}, dropout_op=None,
+#     nonlin=nn.LeakyReLU, nonlin_kwargs={'inplace': True}, deep_supervision=False
+# )
 experimentOne.add_trainer(
-    ResEncUnet,
-    "ResEncUnetM",
-    n_stages=6, features_per_stage=(32, 64, 128, 256, 320, 320),
-    conv_op=nn.Conv3d, kernel_sizes=3, strides=(1, 2, 2, 2, 2, 2),
-    n_blocks_per_stage=(1, 3, 4, 6, 6, 6),
-    n_conv_per_stage_decoder=(1, 1, 1, 1, 1),
-    conv_bias=True, norm_op=nn.InstanceNorm3d, norm_op_kwargs={}, dropout_op=None,
-    nonlin=nn.LeakyReLU, nonlin_kwargs={'inplace': True}, deep_supervision=False
+    MedNeXt,
+    "MedNeXt",
+    num_input_channels=1,
+    model_id="M",
 )
+
 # experimentOne.add_trainer(
 #     NnUnet,
 #     "nnUnet_8xdim",

@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 import wandb
 import tqdm
 from torch.cuda.amp import autocast, GradScaler
+import platform
 
 T, U = TypeVar("T"), TypeVar("U")
 
@@ -110,8 +111,12 @@ class ModelTrainer(ABC, Generic[T, U]):
         self.losses = losses
         self.metrics = metrics
         self.device = device
-        # self.losses_result = TrainerLoss(train=[], val=[], test=[])
-        # self.metrics_result = TrainerMetric(train={}, val={}, test={})
+        
+        self.result = {
+            "train": [],
+            "val": [],
+        }
+        
         self.name = name
 
         if load_model_path is not None:
@@ -158,6 +163,9 @@ class ModelTrainer(ABC, Generic[T, U]):
             metric_values[str(metric)] = metric(output, target)
         return metric_values
 
+    def get_result(self):
+        return self.result
+
     def train(
         self,
         train: DataLoader,
@@ -201,7 +209,7 @@ class ModelTrainer(ABC, Generic[T, U]):
             raise TypeError("Invalid train_config type")
 
         optimizer = train_config.optimizer(self.model.parameters(), lr=train_config.lr)
-        scaler = GradScaler()
+        scaler = torch.amp.GradScaler('cuda')
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=len(train) * train_config.epoch
         )
@@ -210,11 +218,17 @@ class ModelTrainer(ABC, Generic[T, U]):
         run.watch(self.model, log="all")
 
         # Compile the optimizer's step function
-        @torch.compile
-        def compiled_step():
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
+        if platform.system() == "Linux":
+            @torch.compile
+            def compiled_step():
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+        else:
+            def compiled_step():
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
 
         for ep in ep_range:
             self.model.train()
@@ -228,7 +242,7 @@ class ModelTrainer(ABC, Generic[T, U]):
                 input = input.to(self.device, non_blocking=True)
                 target = target.to(self.device, non_blocking=True)
 
-                with autocast():
+                with torch.amp.autocast('cuda'):
                     output = self.model(input)
                     try:
                         loss = self.calculate_loss(output, target) / accumulation_steps
@@ -283,6 +297,8 @@ class ModelTrainer(ABC, Generic[T, U]):
             # merge train and val output
             merged_output = train_output | val_output
             wandb.log(merged_output)
+            self.result["train"].append(train_output)
+            self.result["val"].append(val_output)
 
             scheduler.step()  # Step the scheduler after each epoch
 
@@ -327,7 +343,9 @@ class ModelTrainer(ABC, Generic[T, U]):
         self.model.eval()
         self.logger.info("Testing started.", extra={"contexts": "start testing"})
         for i, (idx, input, target) in enumerate(test):
-            output = self.model(input.to(self.device, non_blocking=True)).detach()
+            output = self.model(input.to(self.device, non_blocking=True))
+            target = target.to(self.device, non_blocking=True)
+            
             loss = self.calculate_loss(output, target).item()
             metric_values = {
                 k: v.detach().cpu().numpy()

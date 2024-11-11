@@ -1,12 +1,16 @@
 import logging
 import json
+import os
 from typing import Generic, TypeVar, List, Type
+from pydantic import ValidationError
 
 from ...DataEngine import DataEngine
 from ..Metric import Metric, Loss
 from .ModelTrainer import ModelTrainer, TrainConfig
 # from .KFold import KFold, KFoldResult
 from ...DataEngine.types.dataset import DatasetConfig
+from ...DataEngine.types.utils import SimpleDatasetMetaData, KFOLDDatasetMetaData
+import numpy as np
 
 T, U = TypeVar('T'), TypeVar('U')
 
@@ -22,23 +26,51 @@ class Experimenting(Generic[T, U]):
         self.metrics = metrics
         self.losses = losses
         
-        self.data_engine = DataEngine(num_classes, meta_data_path, dataset_config, logger)
+        
+        try:
+            with open(meta_data_path, "r", encoding="utf-8") as f:
+                self.meta_data = SimpleDatasetMetaData.model_validate(json.load(f))
+        except ValidationError as e:
+            try:
+                with open(meta_data_path, "r", encoding="utf-8") as f:
+                    self.meta_data = KFOLDDatasetMetaData.model_validate(json.load(f))
+            except ValidationError as e:
+                logger.error("Failed to load meta data from %s with error: %s", meta_data_path, e, extra={"contexts": "load meta data"})
+                return
+            except Exception as e:
+                logger.error("Failed to load meta data from %s with error: %s", meta_data_path, e, extra={"contexts": "load meta data"})
+                return
+        except Exception as e:
+            logger.error("Failed to load meta data from %s with error: %s", meta_data_path, e, extra={"contexts": "load meta data"})
+            return
+        
+        if isinstance(self.meta_data, SimpleDatasetMetaData):
+            self.add_trainer = self.__add_trainer
+            self.run = self.__run
+            
+        else:
+            self.add_trainer = self.__Kfold_add_trainer
+            self.run = self.__Kfold_run
+        
+        self.data_engine = DataEngine(num_classes, self.meta_data, dataset_config, logger)
         self.train_method: List[ModelTrainer[T, U]] = []
         
         self.logger.info("Experimenting initialized.", extra={"contexts": "initialize experiment"})
-    
+
+        
+        
     def get_train(self):
         # for test
         train_data = self.data_engine.get_dataloader("train", 1, True, 0)
         return train_data
         
     
-    def add_trainer(self, trainer: Type[ModelTrainer[T, U]], name: str, load_model_path: str | None = None, **kwargs):
+    def __add_trainer(self, trainer: Type[ModelTrainer[T, U]], name: str, load_model_path: str | None = None, **kwargs):
         trainer = trainer(self.logger, self.num_classes, self.metrics, self.losses, name, self.device, load_model_path, **kwargs)
         self.train_method.append(trainer)
         self.logger.info(f"Added {trainer.__class__.__name__} to the experiment.", extra={"contexts": "add trainer"})
         
-    def run(self, batch_size: int, num_workers: int, train_config: TrainConfig):
+    def __run(self, batch_size: int, num_workers: int, train_config: TrainConfig):
         self.logger.info("Experimenting started.", extra={"contexts": "run experiment"})
         train_data = self.data_engine.get_dataloader("train", batch_size, True, num_workers)
         val_data = self.data_engine.get_dataloader("val", batch_size, False, num_workers)
@@ -47,8 +79,46 @@ class Experimenting(Generic[T, U]):
         for trainer in self.train_method:
             trainer.train(train_data, val_data, train_config)
             trainer.test(test_data)
+
             
         self.logger.info("Experimenting finished.", extra={"contexts": "finish experiment"})
+        
+    def __Kfold_add_trainer(self, trainer: Type[ModelTrainer[T, U]], name: str, load_model_path: str | None = None, **kwargs):
+        for i in range(self.meta_data.info.k):
+            k_name =  f"{name}_{i}"
+            ent_trainer = trainer(self.logger, self.num_classes, self.metrics, self.losses, k_name, self.device, load_model_path, **kwargs)
+            self.train_method.append(ent_trainer)
+            self.logger.info(f"Added {trainer.__class__.__name__} to the experiment for fold {i}.", extra={"contexts": "add trainer"})
+
+    def __Kfold_run(self, batch_size: int, num_workers: int, train_config: TrainConfig):
+        self.logger.info("Experimenting started.", extra={"contexts": "run experiment"})
+        results = []
+        
+        for i in range(self.meta_data.info.k):
+            train_data = self.data_engine.get_dataloader_for_kfold("train", i, batch_size, True, num_workers)
+            val_data = self.data_engine.get_dataloader_for_kfold("val", i, batch_size, False, num_workers)
+            test_data = self.data_engine.get_dataloader_for_kfold("test", i, batch_size, False, num_workers)
+            
+            trainer = self.train_method[i]
+            trainer.train(train_data, val_data, train_config)
+            trainer.test(test_data)
+            results.append(trainer.get_result())
+            # for trainer in self.train_method:
+                
+            #     trainer.train(train_data, val_data, train_config)
+            #     trainer.test(test_data)
+            #     results.append(trainer.get_result())
+                
+        # map result to find mean of each metric
+        os.makedirs("k_fold_result", exist_ok=True)
+        results = {
+            "train": np.array([r["train"] for r in results]).mean(axis=0),
+            "val": np.array([r["val"] for r in results]).mean(axis=0)
+        }
+        
+        with open("k_fold_result/"+self.experiment_name+".json", "w") as f:
+            json.dump(results, f)
+                
 
     def export_result(self, json_name: str):
         metric_result = {}

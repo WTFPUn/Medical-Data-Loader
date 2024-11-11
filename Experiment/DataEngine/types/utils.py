@@ -3,21 +3,25 @@ from typing import List, Dict, Any, Tuple, Union
 from typing_extensions import TypedDict
 
 __all__ = [
-    "DatasetMetaData",
     "InfoMetaData",
     "DataMetaData",
+    "SimpleDatasetMetaData",
+    "KFOLDInfoMetaData",
+    "KFOLDDatasetMetaData",
+    "RatioWithValidate",
     "SplitRatio",
+    "DatasetMetaData",
 ]
 
-ratio_with_test = Tuple[float, float, float]
-ratio_without_test = Tuple[float, float]
+RatioWithValidate = Tuple[float, float, float]
+RatioWithoutValidate = Tuple[float, float]
 
-SplitRatio = Union[ratio_with_test, ratio_without_test]
+SplitRatio = Union[RatioWithValidate, RatioWithoutValidate]
 
 
 class InfoMetaData(BaseModel):
     dataset_path: str
-    split_ratio: Union[ratio_with_test, ratio_without_test]
+    split_ratio: Union[RatioWithValidate, RatioWithoutValidate]
     seed: int
 
 
@@ -27,6 +31,20 @@ class DataMetaData(BaseModel):
     val: List[str]
 
 
-class DatasetMetaData(BaseModel):
+class SimpleDatasetMetaData(BaseModel):
     info: InfoMetaData
     data: DataMetaData
+    
+class KFOLDInfoMetaData(BaseModel):
+    dataset_path: str
+    seed: int
+    k: int
+    split_ratio: RatioWithoutValidate
+    
+Fold = DataMetaData
+    
+class KFOLDDatasetMetaData(BaseModel):
+    info: KFOLDInfoMetaData
+    data: List[Fold]
+
+DatasetMetaData =  Union[SimpleDatasetMetaData, KFOLDDatasetMetaData]

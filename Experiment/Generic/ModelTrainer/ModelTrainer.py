@@ -3,6 +3,8 @@ import logging
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar, List, Dict, Type
+import gc
+from time import perf_counter
 
 from ..Metric import Loss, Metric
 from ...DataEngine import MedicalDataset
@@ -175,7 +177,7 @@ class ModelTrainer(ABC, Generic[T, U]):
         if isinstance(train_config, NewTrainConfig):
             run = wandb.init(
                 name=self.name,
-                project="SeniorProject",
+                project="FirstPartSeniorProject",
                 config={
                     "learning-rate": train_config.lr,
                     "experiment_name": self.name,
@@ -188,7 +190,7 @@ class ModelTrainer(ABC, Generic[T, U]):
             ep_range = range(train_config.epoch)
         elif isinstance(train_config, ContinueTrainConfig):
             run = wandb.init(
-                project="SeniorProject",
+                project="FirstPartSeniorProject",
                 name=self.name,
                 id=train_config.run_id,
                 config={
@@ -209,25 +211,27 @@ class ModelTrainer(ABC, Generic[T, U]):
             raise TypeError("Invalid train_config type")
 
         optimizer = train_config.optimizer(self.model.parameters(), lr=train_config.lr)
-        scaler = torch.amp.GradScaler('cuda')
+        # scaler = torch.amp.GradScaler('cuda')
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=len(train) * train_config.epoch
         )
 
         accumulation_steps = train_config.accumulation_steps
-        run.watch(self.model, log="all")
+        # run.watch(self.model,)
 
         # Compile the optimizer's step function
         if platform.system() == "Linux":
             @torch.compile
             def compiled_step():
-                scaler.step(optimizer)
-                scaler.update()
+                # scaler.step(optimizer)
+                # scaler.update()
+                optimizer.step()
                 optimizer.zero_grad()
         else:
             def compiled_step():
-                scaler.step(optimizer)
-                scaler.update()
+                # scaler.step(optimizer)
+                # scaler.update()
+                optimizer.step()
                 optimizer.zero_grad()
 
         for ep in ep_range:
@@ -242,16 +246,16 @@ class ModelTrainer(ABC, Generic[T, U]):
                 input = input.to(self.device, non_blocking=True)
                 target = target.to(self.device, non_blocking=True)
 
-                with torch.amp.autocast('cuda'):
-                    output = self.model(input)
-                    try:
-                        loss = self.calculate_loss(output, target) / accumulation_steps
-                    except RuntimeError as e:
-                        self.logger.error(f"Runtime error calculating loss at iteration {i}: {e}")
-                        continue
+                output = self.model(input)
+                try:
+                    loss = self.calculate_loss(output, target) / accumulation_steps
+                except RuntimeError as e:
+                    self.logger.error(f"Runtime error calculating loss at iteration {i}: {e}")
+                    continue
 
                 if loss is not None and torch.isfinite(loss):
-                    scaler.scale(loss).backward()
+                    # scaler.scale(loss).backward()
+                    loss.backward()
                 else:
                     self.logger.warning(f"Invalid loss at iteration {i}. Skipping gradient update.")
                     continue
@@ -266,6 +270,7 @@ class ModelTrainer(ABC, Generic[T, U]):
                     k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
                     for k, v in metric_values.items()
                 }
+                gc.collect()
 
             train_output = {
                 f"train_{k}": v / len(train)
@@ -329,7 +334,7 @@ class ModelTrainer(ABC, Generic[T, U]):
         with torch.no_grad():
             return self.model(data)
 
-    def test(self, test: DataLoader) -> None:
+    def test(self, test: DataLoader):
         """
         Test the model on the given test set.
 
@@ -342,23 +347,44 @@ class ModelTrainer(ABC, Generic[T, U]):
         """
         self.model.eval()
         self.logger.info("Testing started.", extra={"contexts": "start testing"})
+        
+        to_return = {
+            "metrics": {},
+            # output is the returned value from the model
+            "output": [],
+            "input": [],
+            "ground_truth": [],
+            "infer_time": []
+        }
+        
         for i, (idx, input, target) in enumerate(test):
+            start = perf_counter()
             output = self.model(input.to(self.device, non_blocking=True))
+            end = perf_counter()
             target = target.to(self.device, non_blocking=True)
             
-            loss = self.calculate_loss(output, target).item()
+            # loss = self.calculate_loss(output, target).item()
             metric_values = {
                 k: v.detach().cpu().numpy()
                 for k, v in self.calculate_metrics(output, target).items()
             }
 
-            self.logger.info(
-                f"Iteration {i}, imgid: {idx}, Loss: {loss}, Metrics: {metric_values},",
-                extra={"contexts": "test"},
-            )
+            # self.logger.info(
+            #     f"Iteration {i}, imgid: {idx}, Metrics: {metric_values},",
+            #     extra={"contexts": "test"},
+            # )
+            
+            to_return["output"].append(output.detach().cpu().numpy())
+            to_return["ground_truth"].append(target.detach().cpu().numpy())
+            to_return["input"].append(input.detach().cpu().numpy())
+            to_return["infer_time"].append(end - start)          
+            for k, v in metric_values.items():
+                to_return["metrics"][k] = to_return["metrics"].get(k, []) + [v]
 
         self.logger.info("Testing finished.", extra={"contexts": "finish testing"})
-
+        
+        return to_return
+        
     def save_model(self, path: str) -> None:
         """
         Save the model to a file.

@@ -90,7 +90,7 @@ class Experimenting(Generic[T, U]):
             self.train_method.append(ent_trainer)
             self.logger.info(f"Added {trainer.__class__.__name__} to the experiment for fold {i}.", extra={"contexts": "add trainer"})
 
-    def __Kfold_run(self, batch_size: int, num_workers: int, train_config: TrainConfig):
+    def __Kfold_run(self, batch_size: int, num_workers: int, train_config: TrainConfig, fixed_k: int | None = None):
         self.logger.info("Experimenting started.", extra={"contexts": "run experiment"})
         results = {
             "train": {
@@ -102,7 +102,15 @@ class Experimenting(Generic[T, U]):
             
         }
         
-        for i in range(self.meta_data.info.k):
+        os.makedirs("trainer_result", exist_ok=True)
+        
+        
+        if fixed_k is not None:
+            k_list = [fixed_k]
+        else:
+            k_list = range(self.meta_data.info.k)
+        
+        for i in k_list:
             train_data = self.data_engine.get_dataloader_for_kfold("train", i, batch_size, True, num_workers)
             val_data = self.data_engine.get_dataloader_for_kfold("val", i, batch_size, False, num_workers)
             test_data = self.data_engine.get_dataloader_for_kfold("test", i, batch_size, False, num_workers)
@@ -114,7 +122,11 @@ class Experimenting(Generic[T, U]):
             for metric in [str(l) for l in self.metrics]:
                 results["train"][metric].append([train_result["train"][j]["train_"+metric] for j in range(len(train_result["train"]))])
                 results["val"][metric].append([train_result["val"][j]["val_"+metric] for j in range(len(train_result["val"]))])
+            
+            with open("trainer_result/"+trainer.name+".json", "w") as f:
+                json.dump(train_result, f)
                 
+            
             # for trainer in self.train_method:
                 
             #     trainer.train(train_data, val_data, train_config)
@@ -122,6 +134,10 @@ class Experimenting(Generic[T, U]):
             #     results.append(trainer.get_result())
                 
         # map result to find mean of each metric
+        
+        if fixed_k is None:
+            return
+        
         os.makedirs("k_fold_result", exist_ok=True)
         # mean of each metric for each epoch
         metric_name = [str(l) for l in self.metrics]

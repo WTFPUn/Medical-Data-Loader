@@ -1,5 +1,5 @@
 torch
-torchvision
+torchvision --index-url https://download.pytorch.org/whl/cu124
 numpy
 pandas
 matplotlib
@@ -22,3 +22,5 @@ matplotlib
 wandb
 opencv-python
 pydantic
+monai
+einops

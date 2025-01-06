@@ -4,8 +4,6 @@ import os
 from torch.utils.data import Dataset
 import torch
 import numpy as np
-import psutil
-
 from ..types import DatasetConfig
 
 
@@ -77,6 +75,5 @@ class MedicalDataset(Dataset):
         else:
             data = torch.unsqueeze(torch.from_numpy(data), 0).float().to(self.device, non_blocking=True)
             label = torch.from_numpy(label).long().to(self.device, non_blocking=True)
-
         return idx, data, label
     

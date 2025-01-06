@@ -4,21 +4,16 @@ from typing import Dict, List
 
 import numpy
 
-from ..DataEngine import MedicalDataset
-from ..Generic import ModelTrainer, TrainConfig, ContinueTrainConfig, NewTrainConfig
-from .nnUnetModule.nnUnet import NnUnetBase
+from ..Generic import ModelTrainer
 from ..Generic import Loss, Metric
 
-import torch
-from torch.utils.data import DataLoader
-import wandb
-import tqdm
-from torch.cuda.amp import autocast, GradScaler
+from monai.networks.nets.swin_unetr import SwinUNETR
 
+import torch
 generic_input, generic_output = torch.Tensor, torch.Tensor
 
 
-class NnUnet(ModelTrainer[generic_input, generic_output]):
+class SwinUNETRTrainer(ModelTrainer[generic_input, generic_output]):
     def __init__(
         self,
         logger: logging.Logger,
@@ -31,8 +26,10 @@ class NnUnet(ModelTrainer[generic_input, generic_output]):
         **kwargs,
     ):
         self.num_input_channels = kwargs.get("num_input_channels", 1)
-        self.channels_multiplier = kwargs.get("channels_multiplier", 1)
-        super(NnUnet, self).__init__(
+        self.depths = kwargs.get("depths", (2,4,2,2))
+        self.img_size = kwargs.get("img_size", (128, 128, 128))
+        
+        super(SwinUNETRTrainer, self).__init__(
             logger,
             num_classes,
             metrics,
@@ -44,10 +41,4 @@ class NnUnet(ModelTrainer[generic_input, generic_output]):
         )
 
     def set_model(self) -> torch.nn.Module:
-        return NnUnetBase(
-            num_input_channels=self.num_input_channels,
-            num_classes=self.num_classes,
-            trilinear=False,
-            use_ds_conv=False,
-            channels_multiplier=self.channels_multiplier,
-        )
+        return SwinUNETR(img_size=self.img_size, in_channels=self.num_input_channels, out_channels=self.num_classes, depths=self.depths)

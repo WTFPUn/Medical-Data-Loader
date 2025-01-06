@@ -16,13 +16,17 @@ from Experiment import (
     NnUnet,
     RandomFlip3D,
     Resize,
+    SwinUNETRTrainer
 )
 import torch.nn as nn
 import torch
 from torchvision import datasets, transforms
 import os
+import argparse
 
-# os.environ['WANDB_MODE'] = 'offline'
+os.environ['WANDB_MODE'] = 'offline'
+
+CE_weight = torch.tensor([0.00644722, 0.41434646, 0.57920632]).to("cuda")
 
 torch.manual_seed(0)
 datasetConfig = DatasetConfig(
@@ -49,38 +53,55 @@ datasetConfig = DatasetConfig(
     },
 )
 
+parser = argparse.ArgumentParser(description="Run medical data loader experiment")
+parser.add_argument('--model', type=str, required=True, help='Model name to run (MedNeXt, ResEncUnet, NnUnet)')
+parser.add_argument('--kfold', type=int, required=False, help='run specific kfold')
+args = parser.parse_args()
 experimentOne = Experimenting[torch.tensor, torch.tensor](
-    "before_i_die",
-    "split.json",
+    "kfold_test",
+    "split_k.json",
     datasetConfig,
-    [DSCLoss(3), CE()],
-    [DSC(), CE(), Accuracy(), Precision(3), Recall(3)],
+    [DSCLoss(3), CE(CE_weight)],
+    [DSC(), CE(CE_weight), Accuracy(), Precision(3), Recall(3)],
     3,
     logger,
 )
-# experimentOne.add_trainer(
-#     ResEncUnet,
-#     "ResEncUnetM",
-#     n_stages=6, features_per_stage=(32, 64, 128, 256, 320, 320),
-#     conv_op=nn.Conv3d, kernel_sizes=3, strides=(1, 2, 2, 2, 2, 2),
-#     n_blocks_per_stage=(1, 3, 4, 6, 6, 6),
-#     n_conv_per_stage_decoder=(1, 1, 1, 1, 1),
-#     conv_bias=True, norm_op=nn.InstanceNorm3d, norm_op_kwargs={}, dropout_op=None,
-#     nonlin=nn.LeakyReLU, nonlin_kwargs={'inplace': True}, deep_supervision=False
-# )
-experimentOne.add_trainer(
-    MedNeXt,
-    "MedNeXt",
-    num_input_channels=1,
-    model_id="M",
-)
 
-# experimentOne.add_trainer(
-#     NnUnet,
-#     "nnUnet_8xdim",
-#     num_input_channels=1,
-#     channels_multiplier=8,
-# )
+if args.model == "MedNeXt":
+    experimentOne.add_trainer(
+        MedNeXt,
+        "MedNeXt_M",
+        num_input_channels=1,
+        model_id="M",
+    )
+elif args.model == "ResEncUnet":
+    experimentOne.add_trainer(
+        ResEncUnet,
+        "ResEncUnetM",
+        n_stages=6, features_per_stage=(32, 64, 128, 256, 320, 320),
+        conv_op=nn.Conv3d, kernel_sizes=3, strides=(1, 2, 2, 2, 2, 2),
+        n_blocks_per_stage= (1, 3, 4, 6, 6, 6),
+        n_conv_per_stage_decoder=(2, 2, 2, 2, 2),
+        conv_bias=True, norm_op=nn.InstanceNorm3d, norm_op_kwargs={}, dropout_op=None,
+        nonlin=nn.LeakyReLU, nonlin_kwargs={'inplace': True}, deep_supervision=False
+    )
+elif args.model == "NnUnet":
+    experimentOne.add_trainer(
+        NnUnet,
+        "nnUnet_8xdim",
+        num_input_channels=1,
+        channels_multiplier=8,
+    )
+elif args.model == "SwinUNETR":
+    experimentOne.add_trainer(
+        SwinUNETRTrainer,
+        "SwinUNETR",
+        num_input_channels=1,
+        depths=(2,4,2,2),
+        img_size=(128, 128, 128)
+    )
+else:
+    raise ValueError(f"Unknown model name: {args.model}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -94,19 +115,7 @@ experimentOne.run(
         lr=1e-4,
         optimizer=torch.optim.AdamW
     ),
+    fixed_k=args.kfold if args.kfold is not None else None
 )
-# experimentOne.run(
-#     batch_size=1,
-#     num_workers=0,
-#     train_config=ContinueTrainConfig(
-#         epoch=100,
-#         weight_save_period=10,
-#         accumulation_steps=16,
-#         lr=1e-4,
-#         optimizer=torch.optim.Adam,
-#         current_epoch=15,
-#         run_id="p0euuug4",
-#         model_path="Experimenting/before_i_die/MedNeXt/mednext_first/model_15.pth",
-#         project_name="SeniorProject",
-#     ),
-# )
+
+# to run: python script.py --model MedNeXt --kfold 0

@@ -16,6 +16,7 @@ import tqdm
 from torch.cuda.amp import autocast, GradScaler
 from torch import nn
 from dynamic_network_architectures.architectures.unet import ResidualEncoderUNet
+from nnunetv2.experiment_planning.experiment_planners.residual_unets.residual_encoder_unet_planners import nnUNetPlannerResEncXL
 
 
 generic_input, generic_output = torch.Tensor, torch.Tensor

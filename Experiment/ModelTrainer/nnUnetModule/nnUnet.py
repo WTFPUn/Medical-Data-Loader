@@ -33,7 +33,7 @@ class NnUnetBase(nn.Module):
     
 
 if __name__ == '__main__':
-    model = NnUnetBase(1, 3, trilinear=False, use_ds_conv= True)
+    model = NnUnetBase(1, 3, trilinear=False, use_ds_conv= False)
     x = torch.randn((4, 1, 128, 128, 128))
     y = model(x)
     print(y.shape)

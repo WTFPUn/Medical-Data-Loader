@@ -37,7 +37,7 @@ class DSC(Metric[torch.Tensor, torch.Tensor]):
         # Compute Dice coefficient
         dice = ((2.0 * intersection + self.eps) / (pred_sum + target_sum + self.eps))
 
-        return dice.mean().to(torch.float16)
+        return dice.mean()
        
 
     def __str__(self):
@@ -79,7 +79,7 @@ class DSCLoss(Metric[torch.Tensor, torch.Tensor]):
         dice = (2.0 * intersection + self.eps) / (pred_sum + target_sum + self.eps)
         
         # Compute Dice loss
-        dice_loss = 1.0 - dice.mean().to(torch.float16)
+        dice_loss = 1.0 - dice.mean()
 
         return dice_loss
 

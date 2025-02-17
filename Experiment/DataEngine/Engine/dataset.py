@@ -6,9 +6,6 @@ import torch
 import numpy as np
 from ..types import DatasetConfig
 
-
-
-
 class MedicalDataset(Dataset):
     '''
         Dataset from torch for medical data. This dataloader return 3D image and label(3D mask)
@@ -31,29 +28,64 @@ class MedicalDataset(Dataset):
         self.data_ids = data_ids
         self.data_dir = data_dir
         self.transform = dataset_config.compose[data_type] if data_type in dataset_config.compose.keys() else None
-        self.window_center = dataset_config.window_center
-        self.window_width = dataset_config.window_width
+        # self.window_center = dataset_config.window_center
+        # self.window_width = dataset_config.window_width
+        self.gamma = dataset_config.gamma
         self.device = dataset_config.device
         self.num_classes = num_classes
-    
-    def preprocess(self, img: torch.Tensor):
+
+
+    def gamma_correction(self, img: torch.Tensor, gamma: float):
         '''
-            Apply windowing and normalization to the image.
+            Apply gamma correction to the image.
 
             Args:
-                img (np.ndarray): 3D image array.
+                img (torch.Tensor): Image tensor normalized to [0,1].
+                gamma (float): Gamma correction factor.
 
             Returns:
-                np.ndarray: Preprocessed image array scaled between [0, 1].
+                torch.Tensor: Gamma-corrected image.
+        '''
+        return img ** (1 / gamma)
+
+
+    def preprocess(self, img: torch.Tensor):
+        '''
+            Apply windowing, normalization, and gamma correction to the image.
+
+            Args:
+                img (torch.Tensor): 3D image tensor.
+
+            Returns:
+                torch.Tensor: Preprocessed image tensor scaled between [0, 1].
         '''
         
-        lower = self.window_center - self.window_width // 2
-        upper = self.window_center + self.window_width // 2
-        img = torch.clip(img, lower, upper)
+        # Flatten and filter HU values > -1000
+        hu_values = img.flatten()
+        hu_values_filtered = hu_values[hu_values > -1000]
+
+        # Compute mean HU value safely
+        if hu_values_filtered.numel() > 0:  # Ensure non-empty tensor
+            mean_value = torch.mean(hu_values_filtered)
+        else:
+            mean_value = torch.tensor(0.0, device=img.device)  # Default if no valid HU values
+
+        # Select windowing based on mean HU value
+        lower, upper = (100, 1600) if mean_value > 0 else (-400, 1100)
+
+        # Apply windowing (clip)
+        img = torch.clamp(img, lower, upper)
+
+        # Normalize to [0, 1]
         img = (img - lower) / (upper - lower)
+
+        # Apply gamma correction
+        img = self.gamma_correction(img, self.gamma)
+        torch.cuda.empty_cache()
+
         return img
         
-    
+
     def __len__(self):
         return len(self.data_ids)
     
@@ -64,6 +96,7 @@ class MedicalDataset(Dataset):
 
         # Load data as memory-mapped arrays without changing dtype
         data = torch.from_numpy(np.load(data_path, mmap_mode='r')["arr_0"]).unsqueeze(0).float()
+        data = torch.tensor(data, dtype=torch.float32, device=self.device)
         label = torch.from_numpy(np.load(label_path, mmap_mode='r')["arr_0"]).unsqueeze(0).long()
 
         # Preprocess data without loading the entire array into memory

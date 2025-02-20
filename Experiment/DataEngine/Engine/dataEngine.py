@@ -30,8 +30,8 @@ class DataEngine:
         logger.info("DataEngine initialized with meta data from %s", self.dataset_path, extra={"contexts": "initialize data engine"})
         
     def __niigz_to_npz_thread(self, idx: str):
-        data = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/data/img{idx}.nii.gz"))
-        label = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/label/label{idx}.nii.gz"))
+        data = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/data/img{idx}.nii.gz")).astype(np.float32)
+        label = sitk.GetArrayFromImage(sitk.ReadImage(f"{self.dataset_path}/label/label{idx}.nii.gz")).astype(np.float32)
         
         np.savez_compressed(f"{self.dataset_path}/data_npz/img{idx}.npz", data)
         np.savez_compressed(f"{self.dataset_path}/label_npz/label{idx}.npz", label)

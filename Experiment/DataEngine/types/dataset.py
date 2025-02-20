@@ -7,5 +7,6 @@ from torchvision.transforms import Compose
 class DatasetConfig(BaseModel):
     window_center: int = 40
     window_width: int = 80
-    device: Literal["cpu", "cuda"] = "cpu"
+    device: Literal["cpu", "cuda"] = "cuda"
+    gamma: float = 0.7
     compose: None | Any = None

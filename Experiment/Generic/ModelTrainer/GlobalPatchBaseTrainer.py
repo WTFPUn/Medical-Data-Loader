@@ -8,7 +8,7 @@ from time import perf_counter
 
 from ..Metric import Loss, Metric
 from ...DataEngine import MedicalDataset
-from .DataClass import TrainConfig, TrainerLoss, TrainerMetric, NewTrainConfig, ContinueTrainConfig
+from mamba_ssm import Mamba
 
 from torch import nn
 from dataclasses import dataclass
@@ -19,18 +19,17 @@ from torch.utils.data import DataLoader
 import wandb
 import tqdm
 from torch.cuda.amp import autocast, GradScaler
+from .DataClass import TrainConfig, TrainerLoss, TrainerMetric, NewTrainConfig, ContinueTrainConfig
 import platform
+from torch.nn import functional as F
 
 T, U = TypeVar("T"), TypeVar("U")
 
 __all__ = [
-    "ModelTrainer",
+    "PatchBaseTrainer",
 ]
 
-
-
-
-class ModelTrainer(ABC, Generic[T, U]):
+class GlobalPatchBaseTrainer(ABC, Generic[T, U]):
     """
     A base class for training, validating, and inferring models.
 
@@ -88,6 +87,7 @@ class ModelTrainer(ABC, Generic[T, U]):
         else:
             self.model = self.set_model()
         self.model.to(self.device)
+        
 
         self.path_to_save = os.path.join(*self.logger.name.split(".")[1:], self.name)
         os.makedirs(self.path_to_save, exist_ok=True)
@@ -126,6 +126,7 @@ class ModelTrainer(ABC, Generic[T, U]):
             metric_values[str(metric)] = metric(output, target)
         return metric_values
 
+
     def get_result(self):
         return self.result
 
@@ -134,6 +135,8 @@ class ModelTrainer(ABC, Generic[T, U]):
         train: DataLoader,
         val: DataLoader,
         train_config: TrainConfig,
+        total_iter: int,
+        total_patch: int
     ) -> None:
         if isinstance(train_config, NewTrainConfig):
             run = wandb.init(
@@ -146,6 +149,7 @@ class ModelTrainer(ABC, Generic[T, U]):
                     "epoch": train_config.epoch,
                     "accumulation_steps": train_config.accumulation_steps,
                     "optimizer": train_config.optimizer.__name__,
+                    "losses": [str(loss) for loss in self.losses],
                 },
             )
             ep_range = range(train_config.epoch)
@@ -179,6 +183,7 @@ class ModelTrainer(ABC, Generic[T, U]):
 
         accumulation_steps = train_config.accumulation_steps
         # run.watch(self.model,)
+        
 
         # Compile the optimizer's step function
         if platform.system() == "Linux":
@@ -201,81 +206,87 @@ class ModelTrainer(ABC, Generic[T, U]):
             cum_train_metric: Dict[str, numpy.ndarray] = {}
 
             optimizer.zero_grad()
-            for i, (idx, input, target) in tqdm.tqdm(
-                enumerate(train), total=len(train)
-            ):
-                input = input.to(self.device, non_blocking=True)
-                target = target.to(self.device, non_blocking=True)
 
-                output = self.model(input)
-                try:
-                    loss = self.calculate_loss(output, target) / accumulation_steps
-                except RuntimeError as e:
-                    self.logger.error(f"Runtime error calculating loss at iteration {i}: {e}")
-                    continue
-
-                if loss is not None and torch.isfinite(loss):
-                    # scaler.scale(loss).backward()
-                    loss.backward()
-                else:
-                    self.logger.warning(f"Invalid loss at iteration {i}. Skipping gradient update.")
-                    continue
-
-                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train):
-                    compiled_step()
-
-                cum_loss += loss.item() * accumulation_steps
-
-                metric_values = self.calculate_metrics(output, target)
-                cum_train_metric = {
-                    k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
-                    for k, v in metric_values.items()
-                }
-                gc.collect()
-
-            train_output = {
-                f"train_{k}": v / len(train)
-                for k, v in cum_train_metric.items()
-            }
-
-            self.model.eval()
-            cum_val_metric = {}
-
-            with torch.no_grad():
-                for i, (idx, input, target) in tqdm.tqdm(
-                    enumerate(val), total=len(val)
-                ):
+            with tqdm.tqdm(total=total_iter) as pbar:
+                for i, (idx, input, target, position) in enumerate(train):
                     input = input.to(self.device, non_blocking=True)
                     target = target.to(self.device, non_blocking=True)
-                    output = self.model(input)
 
+                    # Reshape from (B, P, C, H, W, D) -> (P, B, C, H, W, D)
+                    input = input.permute(1, 0, 2, 3, 4, 5)  # (P, B, C, H, W, D)
+                    target = target.permute(1, 0, 2, 3, 4, 5)  # (P, B, C, H, W, D)
+
+                    # 🧠 Pass the patches into the model (no more patch loop)
+                    output = self.model(input)  # Output shape: (B, C, H, W, D)
+
+                    # Compute loss for the entire voxel (sum for all patches)
+                    loss = self.calculate_loss(output, target) / accumulation_steps
+
+                    if torch.isfinite(loss):
+                        loss.backward()
+
+                    cum_loss += loss.item() * accumulation_steps
+
+                    # Compute metrics after loss calculation
                     metric_values = self.calculate_metrics(output, target)
-                    cum_val_metric = {
-                        k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)
+                    cum_train_metric = {
+                        k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
                         for k, v in metric_values.items()
                     }
 
-            val_output = {
-                f"val_{k}": v / len(val)
-                for k, v in cum_val_metric.items()
-            }
-            
-            # merge train and val output
-            merged_output = train_output | val_output
-            wandb.log(merged_output)
-            self.result["train"].append(train_output)
-            self.result["val"].append(val_output)
+                    gc.collect()
+                    pbar.update(1)
 
-            scheduler.step()  # Step the scheduler after each epoch
+                    # Perform optimizer step only after accumulation steps
+                    if (i + 1) % accumulation_steps == 0:
+                        optimizer.step()
+                        optimizer.zero_grad()
 
-            # Save model weights periodically
-            if ep % train_config.weight_save_period == 0 or ep == ep_range[-1]:
-                torch.save(
-                    self.model.state_dict(),
-                    os.path.join(self.path_to_save, f"model_{ep}.pth"),
-                )
-                
-                
+                train_output = {
+                    f"train_{k}": v / (len(train) * total_patch)
+                    for k, v in cum_train_metric.items()
+                }
+
+                self.model.eval()
+                cum_val_metric = {}
+
+                with torch.no_grad():
+                    for i, (idx, input, target, position) in enumerate(val):
+                        input = input.to(self.device, non_blocking=True)
+                        target = target.to(self.device, non_blocking=True)
+
+                        input = input.permute(1, 0, 2, 3, 4, 5)
+                        target = target.permute(1, 0, 2, 3, 4, 5)
+
+                        output = self.model(input, ssm_out)  # Forward through model
+                        metric_values = self.calculate_metrics(output, target)
+                        cum_val_metric = {
+                            k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)
+                            for k, v in metric_values.items()
+                        }
+
+                        gc.collect()
+
+                val_output = {
+                    f"val_{k}": v / (len(val) * total_patch)
+                    for k, v in cum_val_metric.items()
+                }
+
+                # Merge train and val output
+                merged_output = train_output | val_output
+                wandb.log(merged_output)
+                self.result["train"].append(train_output)
+                self.result["val"].append(val_output)
+
+                scheduler.step()  # Step the scheduler after each epoch
+
+                # Save model weights periodically
+                if ep % train_config.weight_save_period == 0 or ep == ep_range[-1]:
+                    torch.save(
+                        self.model.state_dict(),
+                        os.path.join(self.path_to_save, f"model_{ep}.pth"),
+                    )
+
         run.finish()
 
         self.logger.info("Training finished.", extra={"contexts": "finish training"})

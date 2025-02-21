@@ -1,22 +1,29 @@
 from Experiment import (
     Experimenting,
     DatasetConfig,
+    PatchedDatasetConfig,
     DSC,
     DSCLoss,
     CE,
     Accuracy,
     Precision,
     Recall,
-    IoU,
     NewTrainConfig,
-    ContinueTrainConfig,
     logger,
+    # MedNeXt,
+    # ResEncUnet,
+    # NnUnet,
+    RandomFlip3D,
+    Resize,
+    CropOrPad3D,
+    # SwinUNETRTrainer
+)
+from Experiment.ModelTrainer import (
     MedNeXt,
     ResEncUnet,
     NnUnet,
-    RandomFlip3D,
-    Resize,
-    SwinUNETRTrainer
+    SwinUNETRTrainer,
+    PatchBaseNnUnet,
 )
 import torch.nn as nn
 import torch
@@ -29,25 +36,29 @@ os.environ['WANDB_MODE'] = 'offline'
 CE_weight = torch.tensor([0.00644722, 0.41434646, 0.57920632]).to("cuda")
 
 torch.manual_seed(0)
-datasetConfig = DatasetConfig(
-    window_center=400,
-    window_width=1000,
+torch.manual_seed(0)
+datasetConfig = PatchedDatasetConfig(
+    window_center=600,
+    window_width=500,
+    patch_size=128,
+    voxel_size=768,
+    stride=0,
     device="cuda",
     compose={
         "train": transforms.Compose(
             [
-                Resize((128)),
                 RandomFlip3D(axes=(0, 1, 2), flip_prob=0.5),
+                CropOrPad3D((768, 768, 768)),
             ]
         ),
         "val": transforms.Compose(
             [
-                Resize((128)),
+                CropOrPad3D((768, 768, 768)),
             ]
         ),
         "test": transforms.Compose(
             [
-                Resize((128)),
+                CropOrPad3D((768, 768, 768)),
             ]
         ),
     },
@@ -55,11 +66,12 @@ datasetConfig = DatasetConfig(
 
 parser = argparse.ArgumentParser(description="Run medical data loader experiment")
 parser.add_argument('--model', type=str, required=True, help='Model name to run (MedNeXt, ResEncUnet, NnUnet)')
+# parser.add_argument('--name', type=str, required=True, help='Experiment name')
 parser.add_argument('--kfold', type=int, required=False, help='run specific kfold')
 args = parser.parse_args()
 experimentOne = Experimenting[torch.tensor, torch.tensor](
     "kfold_test",
-    "split_k.json",
+    "kfold.json",
     datasetConfig,
     [DSCLoss(3), CE(CE_weight)],
     [DSC(), CE(CE_weight), Accuracy(), Precision(3), Recall(3)],
@@ -72,7 +84,7 @@ if args.model == "MedNeXt":
         MedNeXt,
         "MedNeXt_M",
         num_input_channels=1,
-        model_id="M",
+    model_id="M",
     )
 elif args.model == "ResEncUnet":
     experimentOne.add_trainer(
@@ -87,10 +99,10 @@ elif args.model == "ResEncUnet":
     )
 elif args.model == "NnUnet":
     experimentOne.add_trainer(
-        NnUnet,
-        "nnUnet_8xdim",
+        PatchBaseNnUnet,
+        "nnUnet_2xdim",
         num_input_channels=1,
-        channels_multiplier=8,
+        channels_multiplier=2,
     )
 elif args.model == "SwinUNETR":
     experimentOne.add_trainer(
@@ -100,13 +112,20 @@ elif args.model == "SwinUNETR":
         depths=(2,4,2,2),
         img_size=(128, 128, 128)
     )
+# elif args.model == "UmambaEnc":
+#     experimentOne.add_trainer(
+#         UmambaEnc,
+#         "UmambaEnc",
+#         num_input_channels=1,
+#         img_size=(128, 128, 128)
+#     )
 else:
     raise ValueError(f"Unknown model name: {args.model}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 experimentOne.run(
-    batch_size=1,
+    batch_size=2,
     num_workers=0,
     train_config=NewTrainConfig(
         epoch=100,

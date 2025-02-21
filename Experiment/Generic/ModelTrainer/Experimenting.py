@@ -7,15 +7,17 @@ from pydantic import ValidationError
 from ...DataEngine import DataEngine
 from ..Metric import Metric, Loss
 from .ModelTrainer import ModelTrainer, TrainConfig
+from .PatchBaseTrainer import PatchBaseTrainer
 # from .KFold import KFold, KFoldResult
-from ...DataEngine.types.dataset import DatasetConfig
+from ...DataEngine.types.dataset import DatasetConfig, PatchedDatasetConfig
 from ...DataEngine.types.utils import SimpleDatasetMetaData, KFOLDDatasetMetaData
 import numpy as np
 
 T, U = TypeVar('T'), TypeVar('U')
+U_ModelTrainer = ModelTrainer | PatchBaseTrainer
 
 class Experimenting(Generic[T, U]):
-    def __init__(self, experiment_name: str, meta_data_path: str, dataset_config: DatasetConfig, losses: List[Loss[T, U]], metrics: List[Metric[T, U]], num_classes: int, logger: logging.Logger):
+    def __init__(self, experiment_name: str, meta_data_path: str, dataset_config: DatasetConfig | PatchedDatasetConfig, losses: List[Loss[T, U]], metrics: List[Metric[T, U]], num_classes: int, logger: logging.Logger):
         self.experiment_name = experiment_name
         self.logger = logger.getChild(self.__class__.__name__+"."+experiment_name)
         self.meta_data_path = meta_data_path
@@ -53,7 +55,7 @@ class Experimenting(Generic[T, U]):
             self.run = self.__Kfold_run
         
         self.data_engine = DataEngine(num_classes, self.meta_data, dataset_config, logger)
-        self.train_method: List[ModelTrainer[T, U]] = []
+        self.train_method: List[U_ModelTrainer] = []
         
         self.logger.info("Experimenting initialized.", extra={"contexts": "initialize experiment"})
 
@@ -65,7 +67,7 @@ class Experimenting(Generic[T, U]):
         return train_data
         
     
-    def __add_trainer(self, trainer: Type[ModelTrainer[T, U]], name: str, load_model_path: str | None = None, **kwargs):
+    def __add_trainer(self, trainer: Type[U_ModelTrainer], name: str, load_model_path: str | None = None, **kwargs):
         trainer = trainer(self.logger, self.num_classes, self.metrics, self.losses, name, self.device, load_model_path, **kwargs)
         self.train_method.append(trainer)
         self.logger.info(f"Added {trainer.__class__.__name__} to the experiment.", extra={"contexts": "add trainer"})
@@ -76,14 +78,23 @@ class Experimenting(Generic[T, U]):
         val_data = self.data_engine.get_dataloader("val", batch_size, False, num_workers)
         test_data = self.data_engine.get_dataloader("test", batch_size, False, num_workers)
         
+        if isinstance(self.dataset_config, PatchedDatasetConfig):
+            patch_size = self.dataset_config.patch_size
+            # assume that the voxel size is a cube
+            num_patched = self.dataset_config.voxel_size // patch_size ** 3
+            
         for trainer in self.train_method:
-            trainer.train(train_data, val_data, train_config)
-            trainer.test(test_data)
+            if isinstance(trainer, PatchBaseTrainer):
+                trainer.train(train_data, val_data, train_config, total_iter=len(train_data)*num_patched, total_patch=num_patched)
+                trainer.test(test_data)
+            elif isinstance(trainer, ModelTrainer):
+                trainer.train(train_data, val_data, train_config)
+                trainer.test(test_data)
 
             
         self.logger.info("Experimenting finished.", extra={"contexts": "finish experiment"})
         
-    def __Kfold_add_trainer(self, trainer: Type[ModelTrainer[T, U]], name: str, load_model_path: str | None = None, **kwargs):
+    def __Kfold_add_trainer(self, trainer: Type[U_ModelTrainer], name: str, load_model_path: str | None = None, **kwargs):
         for i in range(self.meta_data.info.k):
             k_name =  f"{name}_{i}"
             ent_trainer = trainer(self.logger, self.num_classes, self.metrics, self.losses, k_name, self.device, load_model_path, **kwargs)
@@ -115,9 +126,22 @@ class Experimenting(Generic[T, U]):
             val_data = self.data_engine.get_dataloader_for_kfold("val", i, batch_size, False, num_workers)
             test_data = self.data_engine.get_dataloader_for_kfold("test", i, batch_size, False, num_workers)
             
-            trainer = self.train_method[i]
-            trainer.train(train_data, val_data, train_config)
-            trainer.test(test_data)
+            if isinstance(self.dataset_config, PatchedDatasetConfig):
+                patch_size = self.dataset_config.patch_size
+                # assume that the voxel size is a cube
+                num_patched = (self.dataset_config.voxel_size // patch_size) ** 3
+            
+                trainer = self.train_method[i]
+                
+            if isinstance(trainer, PatchBaseTrainer):
+                trainer.train(train_data, val_data, train_config, total_iter=len(train_data)*num_patched, total_patch=num_patched)
+                trainer.test(test_data)
+            
+            elif isinstance(trainer, ModelTrainer):
+                trainer = self.train_method[i]
+                trainer.train(train_data, val_data, train_config)
+                trainer.test(test_data)
+                
             train_result = trainer.get_result()
             for metric in [str(l) for l in self.metrics]:
                 results["train"][metric].append([train_result["train"][j]["train_"+metric] for j in range(len(train_result["train"]))])

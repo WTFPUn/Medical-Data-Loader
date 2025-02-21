@@ -8,6 +8,10 @@
 *.pth
 *.jpg
 
+*.ipynb
+*.zip
+*.csv
+
 venv/
 __pycache__/
 wandb/

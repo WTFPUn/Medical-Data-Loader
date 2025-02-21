@@ -10,7 +10,7 @@ from .types.utils import KFOLDInfoMetaData
 
 
 
-__all__ = ["get_split_meta_data", "sample_file"]
+__all__ = ["get_split_meta_data", "sample_file", "get_kfold_meta_data", "sample_kfold_file"]
 
 
 

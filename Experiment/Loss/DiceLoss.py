@@ -1,4 +1,4 @@
-from ..Generic.Metric import Loss
+from ..Generic import Loss
 
 import torch
 

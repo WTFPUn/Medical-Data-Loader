@@ -8,7 +8,6 @@ from time import perf_counter
 
 from ..Metric import Loss, Metric
 from ...DataEngine import MedicalDataset
-from .DataClass import TrainConfig, TrainerLoss, TrainerMetric, NewTrainConfig, ContinueTrainConfig
 
 from torch import nn
 from dataclasses import dataclass
@@ -19,18 +18,17 @@ from torch.utils.data import DataLoader
 import wandb
 import tqdm
 from torch.cuda.amp import autocast, GradScaler
+from .DataClass import TrainConfig, TrainerLoss, TrainerMetric, NewTrainConfig, ContinueTrainConfig
 import platform
+from torch.nn import functional as F
 
 T, U = TypeVar("T"), TypeVar("U")
 
 __all__ = [
-    "ModelTrainer",
+    "PatchBaseTrainer",
 ]
 
-
-
-
-class ModelTrainer(ABC, Generic[T, U]):
+class PatchBaseTrainer(ABC, Generic[T, U]):
     """
     A base class for training, validating, and inferring models.
 
@@ -126,6 +124,7 @@ class ModelTrainer(ABC, Generic[T, U]):
             metric_values[str(metric)] = metric(output, target)
         return metric_values
 
+
     def get_result(self):
         return self.result
 
@@ -134,6 +133,8 @@ class ModelTrainer(ABC, Generic[T, U]):
         train: DataLoader,
         val: DataLoader,
         train_config: TrainConfig,
+        total_iter: int,
+        total_patch: int
     ) -> None:
         if isinstance(train_config, NewTrainConfig):
             run = wandb.init(
@@ -146,6 +147,7 @@ class ModelTrainer(ABC, Generic[T, U]):
                     "epoch": train_config.epoch,
                     "accumulation_steps": train_config.accumulation_steps,
                     "optimizer": train_config.optimizer.__name__,
+                    "losses": [str(loss) for loss in self.losses],
                 },
             )
             ep_range = range(train_config.epoch)
@@ -179,6 +181,7 @@ class ModelTrainer(ABC, Generic[T, U]):
 
         accumulation_steps = train_config.accumulation_steps
         # run.watch(self.model,)
+        
 
         # Compile the optimizer's step function
         if platform.system() == "Linux":
@@ -201,40 +204,43 @@ class ModelTrainer(ABC, Generic[T, U]):
             cum_train_metric: Dict[str, numpy.ndarray] = {}
 
             optimizer.zero_grad()
-            for i, (idx, input, target) in tqdm.tqdm(
-                enumerate(train), total=len(train)
-            ):
-                input = input.to(self.device, non_blocking=True)
-                target = target.to(self.device, non_blocking=True)
 
-                output = self.model(input)
-                try:
-                    loss = self.calculate_loss(output, target) / accumulation_steps
-                except RuntimeError as e:
-                    self.logger.error(f"Runtime error calculating loss at iteration {i}: {e}")
-                    continue
+            with tqdm.tqdm(total=total_iter) as pbar:
+                for i, (idx, input, target, position) in enumerate(train):
+                    input = input.to(self.device, non_blocking=True)
+                    target = target.to(self.device, non_blocking=True)
+                    
+                    # reshape from (B, P, C, H, W, D) to (P, B, C, H, W, D)
+                    input = input.permute(1, 0, 2, 3, 4, 5)
+                    target = target.permute(1, 0, 2, 3, 4, 5)
+                    
+                    for j in range(input.size(0)):
+                        output = self.model(input[j])
+                        try:
+                            loss = self.calculate_loss(output, target[j]) / accumulation_steps
+                        except RuntimeError as e:
+                            self.logger.error(f"Runtime error calculating loss at iteration {i}: {e}")
+                            continue
+                        if loss is not None and torch.isfinite(loss):
+                            loss.backward()
+                        cum_loss += loss.item() * accumulation_steps
 
-                if loss is not None and torch.isfinite(loss):
-                    # scaler.scale(loss).backward()
-                    loss.backward()
-                else:
-                    self.logger.warning(f"Invalid loss at iteration {i}. Skipping gradient update.")
-                    continue
-
-                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train):
-                    compiled_step()
-
-                cum_loss += loss.item() * accumulation_steps
-
-                metric_values = self.calculate_metrics(output, target)
-                cum_train_metric = {
-                    k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
-                    for k, v in metric_values.items()
-                }
-                gc.collect()
-
+                        metric_values = self.calculate_metrics(output, target[j])
+                        cum_train_metric = {
+                            k: v.detach().cpu().numpy() + cum_train_metric.get(k, 0)
+                            for k, v in metric_values.items()
+                        }
+                        gc.collect()
+                        pbar.update(1)
+                        
+                        if (i + 1) % accumulation_steps == 0:
+                            compiled_step()
+                    else:
+                        # run after the loop
+                        compiled_step()
+                        
             train_output = {
-                f"train_{k}": v / len(train)
+                f"train_{k}": v / (len(train) * total_patch)
                 for k, v in cum_train_metric.items()
             }
 
@@ -242,21 +248,25 @@ class ModelTrainer(ABC, Generic[T, U]):
             cum_val_metric = {}
 
             with torch.no_grad():
-                for i, (idx, input, target) in tqdm.tqdm(
-                    enumerate(val), total=len(val)
-                ):
+                for i, (idx, input, target, position) in enumerate(val):
                     input = input.to(self.device, non_blocking=True)
                     target = target.to(self.device, non_blocking=True)
-                    output = self.model(input)
-
-                    metric_values = self.calculate_metrics(output, target)
-                    cum_val_metric = {
-                        k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)
-                        for k, v in metric_values.items()
-                    }
+                    
+                    # reshape from (B, P, C, H, W, D) to (P, B, C, H, W, D)
+                    input = input.permute(1, 0, 2, 3, 4, 5)
+                    target = target.permute(1, 0, 2, 3, 4, 5)
+                    
+                    for j in range(input.size(0)):
+                        output = self.model(input[j])
+                        metric_values = self.calculate_metrics(output, target[j])
+                        cum_val_metric = {
+                            k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)
+                            for k, v in metric_values.items()
+                        }
+                        gc.collect()
 
             val_output = {
-                f"val_{k}": v / len(val)
+                f"val_{k}": v / (len(val) * total_patch)
                 for k, v in cum_val_metric.items()
             }
             

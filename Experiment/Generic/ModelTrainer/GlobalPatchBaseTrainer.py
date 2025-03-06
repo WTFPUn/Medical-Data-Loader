@@ -8,7 +8,7 @@ from time import perf_counter
 
 from ..Metric import Loss, Metric
 from ...DataEngine import MedicalDataset
-from mamba_ssm import Mamba
+# from mamba_ssm import Mamba
 
 from torch import nn
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ from torch.nn import functional as F
 T, U = TypeVar("T"), TypeVar("U")
 
 __all__ = [
-    "PatchBaseTrainer",
+    "GlobalPatchBaseTrainer",
 ]
 
 class GlobalPatchBaseTrainer(ABC, Generic[T, U]):
@@ -258,7 +258,7 @@ class GlobalPatchBaseTrainer(ABC, Generic[T, U]):
                         input = input.permute(1, 0, 2, 3, 4, 5)
                         target = target.permute(1, 0, 2, 3, 4, 5)
 
-                        output = self.model(input, ssm_out)  # Forward through model
+                        output = self.model(input)  # Forward through model
                         metric_values = self.calculate_metrics(output, target)
                         cum_val_metric = {
                             k: v.detach().cpu().numpy() + cum_val_metric.get(k, 0)

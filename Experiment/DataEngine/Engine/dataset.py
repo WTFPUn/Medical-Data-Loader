@@ -115,6 +115,7 @@ class MedicalDataset(Dataset):
 class PatchedMedicalDataset(Dataset):
     def __init__(self, num_classes: int, data_ids: List[str], data_dir: str, data_type: Literal["train", "test", "val"], dataset_config: PatchedDatasetConfig=PatchedDatasetConfig()):
         self.patch_size = dataset_config.patch_size
+        self.gamma = dataset_config.gamma
         self.voxel_size = dataset_config.voxel_size
         self.stride = dataset_config.stride
         self.num_classes = num_classes
@@ -186,21 +187,54 @@ class PatchedMedicalDataset(Dataset):
 
         return patches, positions_tensor
     
-    def preprocess(self, img: torch.Tensor):
+    def gamma_correction(self, img: torch.Tensor, gamma: float):
         '''
-            Apply windowing and normalization to the image.
+            Apply gamma correction to the image.
 
             Args:
-                img (np.ndarray): 3D image array.
+                img (torch.Tensor): Image tensor normalized to [0,1].
+                gamma (float): Gamma correction factor.
 
             Returns:
-                np.ndarray: Preprocessed image array scaled between [0, 1].
+                torch.Tensor: Gamma-corrected image.
+        '''
+        return img ** (1 / gamma)
+
+
+    def preprocess(self, img: torch.Tensor):
+        '''
+            Apply windowing, normalization, and gamma correction to the image.
+
+            Args:
+                img (torch.Tensor): 3D image tensor.
+
+            Returns:
+                torch.Tensor: Preprocessed image tensor scaled between [0, 1].
         '''
         
-        lower = self.window_center - self.window_width // 2
-        upper = self.window_center + self.window_width // 2
-        img = torch.clip(img, lower, upper)
+        # Flatten and filter HU values > -1000
+        hu_values = img.flatten()
+        hu_values_filtered = hu_values[hu_values > -1000]
+
+        # Compute mean HU value safely
+        if hu_values_filtered.numel() > 0:  # Ensure non-empty tensor
+            mean_value = torch.mean(hu_values_filtered)
+        else:
+            mean_value = torch.tensor(0.0, device=img.device)  # Default if no valid HU values
+
+        # Select windowing based on mean HU value
+        lower, upper = (-300, 1200) if mean_value > 0 else (-800, 700)
+
+        # Apply windowing (clip)
+        img = torch.clamp(img, lower, upper)
+
+        # Normalize to [0, 1]
         img = (img - lower) / (upper - lower)
+
+        # Apply gamma correction
+        img = self.gamma_correction(img, self.gamma)
+        torch.cuda.empty_cache()
+
         return img
     
     def __len__(self):
@@ -226,7 +260,6 @@ class PatchedMedicalDataset(Dataset):
             data = torch.unsqueeze(torch.from_numpy(data), 0).float().to(self.device, non_blocking=True)
             label = torch.from_numpy(label).long().to(self.device, non_blocking=True)
         
-        print(data.shape)
 
         # Patchify both input data and labels
         patches, position = self.patchify_3d_with_positions(data, self.patch_size, self.voxel_size)

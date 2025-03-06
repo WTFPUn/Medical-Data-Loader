@@ -201,6 +201,7 @@ class PatchBaseTrainer(ABC, Generic[T, U]):
         for ep in ep_range:
             self.model.train()
             cum_loss = 0
+            
             cum_train_metric: Dict[str, numpy.ndarray] = {}
 
             optimizer.zero_grad()
@@ -233,7 +234,7 @@ class PatchBaseTrainer(ABC, Generic[T, U]):
                         gc.collect()
                         pbar.update(1)
                         
-                        if (i + 1) % accumulation_steps == 0:
+                        if pbar.n % accumulation_steps == 0:
                             compiled_step()
                     else:
                         # run after the loop
@@ -290,70 +291,128 @@ class PatchBaseTrainer(ABC, Generic[T, U]):
 
         self.logger.info("Training finished.", extra={"contexts": "finish training"})
 
-    def infer(self, data: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def reconstruct_from_patches(patches: torch.Tensor, positions: torch.Tensor, original_shape: tuple) -> torch.Tensor:
         """
-        Infer the model on the given data.
+        Reconstructs the original 4D tensor from patches and their positions.
 
-        Args:
-            data (torch.Tensor): The data to infer.
+        Parameters:
+            patches (torch.Tensor): Patched tensor of shape (B, P, 1, patchH, patchW, patchD).
+            positions (torch.Tensor): Positions tensor of shape (B, P, 3).
+            original_shape (tuple): The desired final shape (C, finalH, finalW, finalD).
 
         Returns:
-            torch.Tensor: The output of the model.
-
+            torch.Tensor: Reconstructed tensor of shape (B, C, finalH, finalW, finalD).
         """
+        B, P, C, patchH, patchW, patchD = patches.shape
+        finalH, finalW, finalD = original_shape
+        C_final = 1
+
+        reconstructed_tensor = torch.zeros((B, C_final, finalH, finalW, finalD),
+                                        dtype=patches.dtype,
+                                        device=patches.device)
+
+        for b in range(B):
+            for i, (x, y, z) in enumerate(positions[b]):
+                reconstructed_tensor[b, :,
+                                    x * patchH : (x + 1) * patchH,
+                                    y * patchW : (y + 1) * patchW,
+                                    z * patchD : (z + 1) * patchD] = patches[b, i]
+        return reconstructed_tensor
+
+    def infer(self, data: torch.Tensor, positions: torch.Tensor, original_shape: tuple) -> torch.Tensor:
         self.model.eval()
         with torch.no_grad():
-            return self.model(data)
+            # shape is (P, B, C, H, W, D)
+            data = data.to(self.device, non_blocking=True)
+            
+            # reshape from (B, P, C, H, W, D) to (P, B, C, H, W, D)
+            data = data.permute(1, 0, 2, 3, 4, 5)
+            outputs = []
+            for i in range(data.size(0)):
+                output = self.model(data[i])
+                # softmax
+                output = F.softmax(output, dim=1)
+                # argmax
+                output = torch.argmax(output, dim=1)
+                outputs.append(output)
+            
+            # Stack outputs to get shape (P, B, H, W, D)
+            outputs = torch.stack(outputs, dim=0)
+            
+            # Permute back to (B, P, H, W, D)
+            outputs = outputs.permute(1, 0,  2, 3, 4)
+            
+            # Reconstruct the original shape from patches
+            reconstructed_outputs = []
+            for i in range(outputs.size(0)):
+                reconstructed_output = self.reconstruct_patchify(outputs[i], positions[i], original_shape)
+                reconstructed_outputs.append(reconstructed_output)
+            
+            # Stack reconstructed outputs to get final shape (B, H, W, D)
+            final_output = torch.stack(reconstructed_outputs, dim=0)
 
-    def test(self, test: DataLoader):
+            
+            return final_output
+
+    def reconstruct_patchify(self, patches: torch.Tensor, positions: torch.Tensor, original_shape: tuple) -> torch.Tensor:
         """
-        Test the model on the given test set.
+        Reconstructs the original 4D tensor from patches and their positions.
 
-        Args:
-            test (MedicalDataset): The test set to test the model on.
+        Parameters:
+            patches (torch.Tensor): Patched tensor of shape (P, patch_size, patch_size, patch_size).
+            positions (torch.Tensor): Positions tensor of shape (P, 3), where each entry is (x, y, z) position.
+            original_shape (tuple): Original shape of the tensor (C, H, W, D).
 
         Returns:
-            None
-
+            torch.Tensor: Reconstructed tensor of shape (C, H, W, D).
         """
+        H, W, D = original_shape
+        patch_size = patches.shape[1]
+
+        # Initialize an empty tensor for reconstruction
+        reconstructed_tensor = torch.zeros((H, W, D), dtype=patches.dtype, device=patches.device)
+
+        # Iterate over patches and their positions to reconstruct the original tensor
+        for i, (x, y, z) in enumerate(positions):
+            reconstructed_tensor[
+                                 x * patch_size: (x + 1) * patch_size, 
+                                 y * patch_size: (y + 1) * patch_size, 
+                                 z * patch_size: (z + 1) * patch_size] = patches[i]
+
+        return reconstructed_tensor
+
+    def test(self, test: DataLoader):
         self.model.eval()
         self.logger.info("Testing started.", extra={"contexts": "start testing"})
-        
         to_return = {
             "metrics": {},
-            # output is the returned value from the model
             "output": [],
             "input": [],
             "ground_truth": [],
             "infer_time": []
         }
-        
-        for i, (idx, input, target) in enumerate(test):
+        for i, (idx, input, target, position) in enumerate(test):
             start = perf_counter()
-            output = self.model(input.to(self.device, non_blocking=True))
-            end = perf_counter()
+            input = input.to(self.device, non_blocking=True)
             target = target.to(self.device, non_blocking=True)
-            
-            # loss = self.calculate_loss(output, target).item()
-            metric_values = {
-                k: v.detach().cpu().numpy()
-                for k, v in self.calculate_metrics(output, target).items()
-            }
-
-            # self.logger.info(
-            #     f"Iteration {i}, imgid: {idx}, Metrics: {metric_values},",
-            #     extra={"contexts": "test"},
-            # )
-            
-            to_return["output"].append(output.detach().cpu().numpy())
-            to_return["ground_truth"].append(target.detach().cpu().numpy())
-            to_return["input"].append(input.detach().cpu().numpy())
-            to_return["infer_time"].append(end - start)          
-            for k, v in metric_values.items():
-                to_return["metrics"][k] = to_return["metrics"].get(k, []) + [v]
-
+            input = input.permute(1, 0, 2, 3, 4, 5)
+            target = target.permute(1, 0, 2, 3, 4, 5)
+            for j in range(input.size(0)):
+                output = self.model(input[j])
+                metric_values = {
+                    k: v.detach().cpu().numpy()
+                    for k, v in self.calculate_metrics(output, target[j]).items()
+                }
+                to_return["output"].append(output.detach().cpu().numpy())
+                to_return["ground_truth"].append(target[j].detach().cpu().numpy())
+                to_return["input"].append(input[j].detach().cpu().numpy())
+                for k, v in metric_values.items():
+                    to_return["metrics"][k] = to_return["metrics"].get(k, []) + [v]
+                gc.collect()
+            end = perf_counter()
+            to_return["infer_time"].append(end - start)
         self.logger.info("Testing finished.", extra={"contexts": "finish testing"})
-        
         return to_return
         
     def save_model(self, path: str) -> None:

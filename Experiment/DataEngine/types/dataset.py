@@ -9,7 +9,7 @@ class DatasetConfig(BaseModel):
     window_width: int = 80
     device: Literal["cpu", "cuda"] = "cpu"
     compose: None | Any = None
-    gamma: float = 0.7
+    gamma: float = 0.35
     
 class PatchedDatasetConfig(BaseModel):
     compose: None | Any = None
@@ -19,4 +19,4 @@ class PatchedDatasetConfig(BaseModel):
     patch_size: int = 64
     stride: int = 32
     voxel_size: int = 800
-    gamma: float = 0.7
+    gamma: float = 0.35

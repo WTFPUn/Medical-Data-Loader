@@ -224,7 +224,7 @@ class PatchBaseTrainer(ABC, Generic[T, U]):
                             continue
                         if loss is not None and torch.isfinite(loss):
                             loss.backward()
-                        cum_loss += loss.item() * accumulation_steps
+                        cum_loss += loss.item()
 
                         metric_values = self.calculate_metrics(output, target[j])
                         cum_train_metric = {
